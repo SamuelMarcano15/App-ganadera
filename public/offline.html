@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>App Ganadera — Cargando...</title>
+    <style>
+        :root {
+            --bg-color: #F7F7F2;
+            --primary-color: #1B4820;
+            --skeleton-base: #E5E7EB;
+            --skeleton-animate: #F3F4F6;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Header Skeleton */
+        header {
+            background-color: var(--bg-color);
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .back-circle {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: var(--skeleton-base);
+        }
+
+        .title-line {
+            height: 20px;
+            width: 150px;
+            border-radius: 4px;
+            background-color: var(--skeleton-base);
+        }
+
+        /* Content Skeleton */
+        .content {
+            padding: 24px 16px;
+            max-width: 600px;
+            margin: 0 auto;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .card-id {
+            background-color: white;
+            padding: 24px;
+            border-radius: 28px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .avatar-circle {
+            width: 96px;
+            height: 96px;
+            border-radius: 50%;
+            background-color: var(--skeleton-base);
+            margin-bottom: 16px;
+        }
+
+        .text-line {
+            height: 12px;
+            border-radius: 4px;
+            background-color: var(--skeleton-base);
+            margin-bottom: 8px;
+        }
+
+        .line-sm { width: 80px; }
+        .line-md { width: 120px; }
+        .line-lg { width: 200px; }
+
+        /* Evolution/Health Skeleton */
+        .main-card {
+            background-color: var(--primary-color);
+            height: 120px;
+            border-radius: 28px;
+            margin-bottom: 24px;
+        }
+
+        /* Bottom Nav Skeleton */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            width: 100%;
+            height: 64px;
+            background-color: white;
+            border-top: 1px solid rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+        }
+
+        .nav-item {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            background-color: var(--skeleton-base);
+        }
+
+        /* Animation */
+        .skeleton {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .skeleton::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            transform: translateX(-100%);
+            background: linear-gradient(
+                90deg,
+                rgba(255, 255, 255, 0) 0,
+                rgba(255, 255, 255, 0.2) 20%,
+                rgba(255, 255, 255, 0.5) 60%,
+                rgba(255, 255, 255, 0)
+            );
+            animation: shutter 1.5s infinite;
+        }
+
+        @keyframes shutter {
+            100% {
+                transform: translateX(100%);
+            }
+        }
+
+        .btn-ready {
+            display: block;
+            margin: 20px auto;
+            background-color: var(--primary-color);
+            color: white;
+            padding: 16px 32px;
+            border-radius: 16px;
+            text-decoration: none;
+            font-weight: 800;
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.1em;
+            box-shadow: 0 4px 14px rgba(27, 72, 32, 0.3);
+            border: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="back-circle skeleton"></div>
+        <div class="title-line skeleton"></div>
+    </header>
+
+    <div class="content">
+        <div class="card-id">
+            <div class="avatar-circle skeleton"></div>
+            <div class="text-line line-sm skeleton"></div>
+            <div class="text-line line-md skeleton" style="height: 24px;"></div>
+            <div class="text-line line-lg skeleton"></div>
+        </div>
+
+        <div class="main-card skeleton"></div>
+
+        <div class="status-msg">Estás en modo offline</div>
+        <p style="text-align: center; font-size: 12px; color: #666; padding: 0 20px;">
+            La página solicitada no se ha cargado aún. Intenta volver al inventario para acceder a tus datos locales.
+        </p>
+        
+        <a href="/inventario" class="btn-ready">Ir al Inventario</a>
+    </div>
+
+    <div class="bottom-nav">
+        <div class="nav-item skeleton"></div>
+        <div class="nav-item skeleton"></div>
+        <div class="nav-item skeleton"></div>
+        <div class="nav-item skeleton"></div>
+        <div class="nav-item skeleton"></div>
+    </div>
+
+    <script>
+        // Si el Service Worker decide que hay red, intentamos recargar
+        window.addEventListener('online', () => {
+            window.location.reload();
+        });
+    </script>
+</body>
+</html>

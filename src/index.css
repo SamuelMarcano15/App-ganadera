@@ -1,0 +1,146 @@
+@import "tailwindcss";
+
+/* ============================================================
+   App ganadera — Design System Tokens
+   Sistema de Diseño: "The Pastoral Editorial"
+   Stack: Tailwind CSS v4 (sin tailwind.config.js)
+   Fuentes: cargadas via <link> en layout.js
+   ============================================================ */
+
+@theme {
+  /* --- Fuentes --- */
+  --font-display: "Plus Jakarta Sans", sans-serif;
+  --font-sans: "Work Sans", sans-serif;
+
+  /* --- Paleta de colores App ganadera (Material You / FIDELITY) --- */
+
+  /* Primarios — Verde Bosque */
+  --color-primary: #173418;
+  --color-on-primary: #ffffff;
+  --color-primary-container: #2d4b2d;
+  --color-on-primary-container: #98ba94;
+  --color-primary-fixed: #c8ecc3;
+  --color-primary-fixed-dim: #add0a8;
+  --color-inverse-primary: #add0a8;
+
+  /* Secundarios — Toffee cálido */
+  --color-secondary: #765934;
+  --color-on-secondary: #ffffff;
+  --color-secondary-container: #fed6a7;
+  --color-on-secondary-container: #795b36;
+  --color-secondary-fixed: #ffddb6;
+  --color-secondary-fixed-dim: #e6c093;
+
+  /* Terciarios — Verde oliva */
+  --color-tertiary: #213300;
+  --color-on-tertiary: #ffffff;
+  --color-tertiary-container: #364a11;
+  --color-on-tertiary-container: #a1ba75;
+
+  /* Superficies */
+  --color-surface: #f9faf4;
+  --color-surface-bright: #f9faf4;
+  --color-surface-dim: #d9dbd5;
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low: #f3f4ee;
+  --color-surface-container: #edeee8;
+  --color-surface-container-high: #e8e9e3;
+  --color-surface-container-highest: #e2e3dd;
+  --color-surface-variant: #e2e3dd;
+  --color-surface-tint: #476646;
+
+  /* Sobre superficies */
+  --color-on-surface: #1a1c19;
+  --color-on-surface-variant: #434841;
+  --color-inverse-surface: #2e312d;
+  --color-inverse-on-surface: #f0f1eb;
+
+  /* Fondo */
+  --color-background: #f9faf4;
+  --color-on-background: #1a1c19;
+
+  /* Error */
+  --color-error: #ba1a1a;
+  --color-on-error: #ffffff;
+  --color-error-container: #ffdad6;
+  --color-on-error-container: #93000a;
+
+  /* Outline */
+  --color-outline: #737970;
+  --color-outline-variant: #c3c8be;
+}
+
+/* ============================================================
+   BASE STYLES
+   ============================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  background-color: var(--color-surface-container-low);
+  color: var(--color-on-surface);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+  color: var(--color-on-surface);
+  line-height: 1.2;
+  margin: 0;
+}
+
+/* ============================================================
+   MOBILE SHELL — Simula dispositivo móvil en desktop
+   ============================================================ */
+
+.mobile-shell-wrapper {
+  width: 100%;
+  min-height: 100dvh;
+}
+
+.mobile-shell {
+  width: 100%;
+  min-height: 100dvh;
+  background-color: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 640px) {
+  .mobile-shell-wrapper {
+    background-color: var(--color-surface-container-high);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+
+  .mobile-shell {
+    max-width: 500px;
+    width: 100%;
+    min-height: 0;
+    height: auto;
+    border-radius: 40px;
+    box-shadow:
+      0 0 0 1px rgba(26, 28, 25, 0.08),
+      0 32px 80px rgba(26, 28, 25, 0.2);
+    overflow: hidden;
+  }
+}
