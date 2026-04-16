@@ -62,12 +62,12 @@ export default defineConfig({
         start_url: "/",
         icons: [
           {
-            src: '/icon-192x192.png',
+            src: '/icons/icon-192x192.png', // <-- Agregado /icons/
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: '/icon-512x512.png',
+            src: '/icons/icon-512x512.png', // <-- Agregado /icons/
             sizes: '512x512',
             type: 'image/png'
           }
