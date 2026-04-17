@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import {
@@ -19,19 +18,10 @@ import {
 import { db } from "@/lib/db";
 import { supabase } from "@/lib/supabaseClient";
 import { addToSyncQueue } from "@/lib/syncUtils";
-import { compressImage, uploadImageToSupabase } from "@/lib/imageUtils";
+import { compressImage } from "@/lib/imageUtils"; // <-- Eliminamos uploadImageToSupabase
 import AnimalImage from "@/components/inventario/AnimalImage";
 import BottomSheet from "@/components/ui/BottomSheet";
 
-/**
- * EventForm: Formulario reutilizable para CREAR o EDITAR eventos de vida.
- * * @param {Object} animal - Datos del animal actual.
- * @param {Object} initialValues - Datos del evento si es edición (GrowthEvent).
- * @param {Array} existingEvents - Lista de eventos del animal para validación.
- * @param {Function} onSubmitSuccess - Callback tras guardado exitoso.
- * @param {Function} onCancel - Callback para cancelar.
- * @param {Boolean} isModal - Si se está usando dentro de un modal (oculta el Hero).
- */
 export default function EventForm({ 
   animal, 
   initialValues = null, 
@@ -69,15 +59,12 @@ export default function EventForm({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [tempNombreEvento, setTempNombreEvento] = useState("");
 
-  // Estados de carga y Toast
   const [isSaving, setIsSaving] = useState(false);
   const [showToast, setShowToast] = useState(false);
 
-  // Estados Dropdowns
   const [isTipoOpen, setIsTipoOpen] = useState(false);
   const [isLargoOpen, setIsLargoOpen] = useState(false);
 
-  // Estado y Ref para Fotografía
   const [photoPreview, setPhotoPreview] = useState(() => {
     if (initialValues?.photo_path) return initialValues.photo_path;
     if (initialValues?.photo_blob) return URL.createObjectURL(initialValues.photo_blob);
@@ -87,12 +74,7 @@ export default function EventForm({
   const fileInputRef = useRef(null);
 
   // --- FORMULARIO ---
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    watch,
-  } = useForm({
+  const { register, handleSubmit, setValue, watch } = useForm({
     defaultValues: {
       fechaEvento: initialValues?.event_date || new Date().toISOString().split('T')[0],
       pesoVaca: initialValues?.mother_weight_kg || "",
@@ -109,7 +91,6 @@ export default function EventForm({
   const isDuplicateBlocked = useMemo(() => {
     const uniqueEvents = ['Destete'];
     if (!uniqueEvents.includes(tipoEvento)) return false;
-    // Si estamos editando, permitimos el tipo si es el del mismo evento
     return existingEvents?.some(e => e.event_type === tipoEvento && e.id !== initialValues?.id);
   }, [tipoEvento, existingEvents, initialValues]);
 
@@ -170,19 +151,15 @@ export default function EventForm({
     return tipoEvento;
   };
 
-  // --- FUNCIÓN CLAVE: OBTENER USUARIO INCLUSO SIN INTERNET ---
+  // --- OBTENER USUARIO ---
   const getSafeUserId = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.user?.id) return session.user.id;
 
-    // Si no hay sesión válida (caducó offline), verificamos nuestro Pase VIP local
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       const isOfflineAuthorized = localStorage.getItem("ganadera_offline_session") === "true";
       if (isOfflineAuthorized) {
-        // Robamos el ID de usuario del animal al que le estamos agregando el evento
         if (animal?.user_id) return animal.user_id;
-        
-        // Plan C: Buscamos cualquier animal
         const anyAnimal = await db.animals.toCollection().first();
         return anyAnimal?.user_id || "offline-user";
       }
@@ -202,22 +179,9 @@ export default function EventForm({
         return;
       }
 
-      const isOnline = typeof navigator !== 'undefined' && navigator.onLine;
       const now = new Date().toISOString();
-      let photo_path = initialValues?.photo_path || null;
 
-      // Procesar Imagen solo si hay un nuevo blob
-      if (photoBlob) {
-        if (isOnline) {
-          try {
-            const fileName = `event-${animal.number}-${Date.now()}`;
-            photo_path = await uploadImageToSupabase(photoBlob, fileName);
-          } catch (e) {
-            console.error('Fallo subida inmediata, se sincronizará luego', e);
-          }
-        }
-      }
-
+      // --- MAGIA OFFLINE: SOLO GUARDAMOS EL BLOB EN DEXIE ---
       const eventData = {
         id: isEditing ? initialValues.id : crypto.randomUUID(),
         user_id: userId,
@@ -229,7 +193,7 @@ export default function EventForm({
         scrotal_circumference_cm: data.circunferencia ? parseFloat(data.circunferencia) : null,
         navel_length: data.largoViril || null,
         observations: data.observations || null,
-        photo_path,
+        photo_path: isEditing ? initialValues.photo_path : null, // Dejamos que SyncManager la llene luego
         photo_blob: photoBlob || (isEditing ? initialValues.photo_blob : null),
         created_at: isEditing ? initialValues.created_at : now,
         updated_at: now,
@@ -254,9 +218,11 @@ export default function EventForm({
       });
 
       setShowToast(true);
-      await new Promise(r => setTimeout(r, 1500));
-      setShowToast(false);
-      onSubmitSuccess();
+      // --- CAMBIO UX: Cerrar rápido en 500ms ---
+      setTimeout(() => {
+        setShowToast(false);
+        onSubmitSuccess();
+      }, 500);
 
     } catch (err) {
       console.error('Error guardando evento:', err);
@@ -276,7 +242,7 @@ export default function EventForm({
         </div>
       )}
 
-      {/* Hero Card Dinámico (Solo se muestra si no es modal) */}
+      {/* Hero Card Dinámico */}
       {!isModal && (
         <div className="relative w-full h-48 rounded-[2.5rem] overflow-hidden shadow-2xl bg-black group">
           <AnimalImage 
@@ -311,7 +277,6 @@ export default function EventForm({
           <ChevronDown className={`w-5 h-5 text-[#1A3621] transition-transform duration-300 ${isTipoOpen ? "rotate-180" : ""}`} />
         </div>
 
-        {/* BADGES DE VALIDACIÓN */}
         {isDuplicateBlocked && (
           <div className="mt-2 flex items-center gap-2 px-3 py-2.5 bg-red-50 text-red-700 rounded-xl border border-red-100 animate-in fade-in slide-in-from-top-1">
             <AlertTriangle className="w-4 h-4 flex-shrink-0" />
@@ -461,7 +426,7 @@ export default function EventForm({
         <input type="file" accept="image/*" capture="environment" ref={fileInputRef} onChange={handlePhotoUpload} className="hidden" />
       </div>
 
-      {/* Footer (No sticky si es modal, el modal ya tiene sus botones o scroll) */}
+      {/* Footer */}
       <div className={`${isModal ? "" : "fixed bottom-0 left-0 w-full bg-gradient-to-t from-[#F8F9F5] via-[#F8F9F5] to-transparent pt-12 pb-8 px-5 z-40"}`}>
         <div className={`max-w-md mx-auto grid grid-cols-2 gap-4 ${isModal ? "mt-4" : ""}`}>
           <button
@@ -492,7 +457,7 @@ export default function EventForm({
         </div>
       </div>
 
-      {/* MODAL: Nombre del Evento Personalizado */}
+      {/* MODAL: Nombre del Evento */}
       <BottomSheet
         isOpen={isModalOpen}
         onClose={() => {

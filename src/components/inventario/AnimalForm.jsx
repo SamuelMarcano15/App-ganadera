@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -9,7 +8,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
 import { supabase } from '@/lib/supabaseClient';
 import { addToSyncQueue } from '@/lib/syncUtils';
-import { compressImage, uploadImageToSupabase } from '@/lib/imageUtils';
+import { compressImage } from '@/lib/imageUtils'; // <-- Eliminamos uploadImageToSupabase de aquí
 import GenealogySelector from './GenealogySelector';
 import CustomSelect from '@/components/ui/CustomSelect';
 import { useNavigate } from 'react-router-dom';
@@ -258,10 +257,12 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
       });
 
       setToast({ show: true, type: 'success', message: 'Servicio registrado correctamente' });
-      await new Promise(r => setTimeout(r, 1500));
-      setToast({ show: false, type: 'success', message: '' });
-      setValue('origin_service_id', newService.id);
-      setShowQuickService(false);
+      
+      setTimeout(() => {
+        setToast({ show: false, type: 'success', message: '' });
+        setValue('origin_service_id', newService.id);
+        setShowQuickService(false);
+      }, 500);
 
     } catch (err) {
       console.error('Error creando servicio rápido', err);
@@ -282,27 +283,26 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
         return;
       }
 
-      const isOnline = typeof navigator !== 'undefined' && navigator.onLine;
       const isEditing = !!initialValues?.id;
       const animalId = initialValues?.id || crypto.randomUUID();
       const now = new Date().toISOString();
 
-      const processImage = async (imgData, prefix, existingPath) => {
-        if (!imgData.blob) return { url: existingPath || null, blob: null };
-        let url = null;
-        if (isOnline) {
-          try {
-            url = await uploadImageToSupabase(imgData.blob, `${prefix}-${Date.now()}`);
-          } catch (e) {
-            console.error('Fallo subida, guardando local', e);
-          }
-        }
-        return { url, blob: imgData.blob };
+      // --- MAGIA OFFLINE: SOLO EXTRAEMOS EL BLOB ---
+      // El SyncManager se encargará de subirlo a la nube cuando haya buen internet
+      const mainImg = {
+        blob: images.main.blob || null,
+        url: isEditing ? initialValues?.photo_path : null
       };
-
-      const mainImg = await processImage(images.main, `animal-${data.number}`, initialValues?.photo_path);
-      const birthImg = await processImage(images.birth, `birth-${data.number}`, images.birth.preview);
-      const weaningImg = await processImage(images.weaning, `weaning-${data.number}`, images.weaning.preview);
+      
+      const birthImg = {
+        blob: images.birth.blob || null,
+        url: images.birth.preview && typeof images.birth.preview === 'string' && !images.birth.preview.startsWith('blob:') ? images.birth.preview : null
+      };
+      
+      const weaningImg = {
+        blob: images.weaning.blob || null,
+        url: images.weaning.preview && typeof images.weaning.preview === 'string' && !images.weaning.preview.startsWith('blob:') ? images.weaning.preview : null
+      };
 
       await db.transaction('rw', [db.animals, db.growth_events, db.sync_queue], async () => {
         const animalData = {
@@ -347,7 +347,7 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
             navel_length: data.navel_length || null,
             observations: data.birth_observations || null,
             photo_path: birthImg.url,
-            photo_blob: birthImg.blob,
+            photo_blob: birthImg.blob || (eventIds.birth && isEditing ? undefined : null),
             created_at: eventIds.birth ? undefined : now,
             updated_at: now
           };
@@ -367,7 +367,7 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
             scrotal_circumference_cm: data.sc_at_weaning || null,
             observations: data.weaning_observations || null,
             photo_path: weaningImg.url,
-            photo_blob: weaningImg.blob,
+            photo_blob: weaningImg.blob || (eventIds.weaning && isEditing ? undefined : null),
             created_at: eventIds.weaning ? undefined : now,
             updated_at: now
           };
@@ -382,9 +382,11 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
         message: isEditing ? 'Cambios guardados exitosamente' : 'Animal registrado con éxito' 
       });
 
-      await new Promise(r => setTimeout(r, 1500));
-      setToast({ show: false, type: 'success', message: '' });
-      onSubmitSuccess && onSubmitSuccess(animalId);
+      // --- CAMBIO UX: Cerrar rápido en 500ms ---
+      setTimeout(() => {
+        setToast({ show: false, type: 'success', message: '' });
+        onSubmitSuccess && onSubmitSuccess(animalId);
+      }, 500);
 
     } catch (err) {
       console.error('Error guardando animal:', err);

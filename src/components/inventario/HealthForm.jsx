@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 // Importa el nuevo icono
 import { TbMedicineSyrup } from "react-icons/tb";
@@ -168,9 +167,12 @@ export default function HealthForm({
       }
 
       setShowToast(true);
-      await new Promise(r => setTimeout(r, 1500));
-      setShowToast(false);
-      onSubmitSuccess();
+      
+      // --- CAMBIO UX: Cerrar rápido en 500ms ---
+      setTimeout(() => {
+        setShowToast(false);
+        onSubmitSuccess();
+      }, 500);
 
     } catch (err) {
       console.error('Error guardando registro médico:', err);

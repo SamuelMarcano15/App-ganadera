@@ -11,12 +11,29 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 /**
+ * Custom Fetch con Timeout estricto de 3 segundos.
+ * Evita el "agujero negro" de 2 minutos cuando el Service Worker 
+ * o una red inestable (Lie-Fi) secuestran la petición.
+ */
+const fetchWithTimeout = async (url, options) => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), 3000); // Corta la petición a los 3 segundos
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    throw error; // Falla rápido para que la app sepa que está offline
+  }
+};
+
+/**
  * Cliente Supabase singleton — configurado para PWA Offline-First
  *
- * persistSession: true      → Guarda el Refresh Token en localStorage
- *                              para que el ganadero no vuelva a loguearse nunca
- * autoRefreshToken: true     → Renueva silenciosamente el JWT cuando hay internet
- * detectSessionInUrl: false  → No necesario para login con email/password
+ * persistSession: true     -> Guarda el Refresh Token en localStorage
+ * autoRefreshToken: true    -> Renueva silenciosamente el JWT cuando hay internet
+ * detectSessionInUrl: false -> No necesario para login con email/password
  */
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -24,4 +41,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     detectSessionInUrl: false,
   },
+  global: {
+    fetch: fetchWithTimeout, // Inyectamos nuestro candado de 3 segundos
+  }
 });
