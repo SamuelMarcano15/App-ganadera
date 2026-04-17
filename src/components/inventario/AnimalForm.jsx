@@ -12,31 +12,37 @@ import GenealogySelector from './GenealogySelector';
 import CustomSelect from '@/components/ui/CustomSelect';
 import { useNavigate } from 'react-router-dom';
 
-// Esquema de validación (Se mantiene igual)
+// Esquema de validación con Zod
 const animalSchema = z.object({
   number: z.string().min(1, 'El código es obligatorio'),
   sex: z.enum(['Macho', 'Hembra']),
   color: z.string().nullable().optional(),
   origin_service_id: z.string().nullable().optional(),
+
   birth_date: z.string().nullable().optional().refine(val => !val || new Date(val) <= new Date(), { message: 'La fecha no puede ser futura' }),
   birth_weight_kg: z.preprocess((val) => (val === '' || val === null) ? undefined : Number(val), z.number().optional()),
   mother_weight_at_birth: z.preprocess((val) => (val === '' || val === null) ? undefined : Number(val), z.number().optional()),
   navel_length: z.string().nullable().optional(),
   birth_observations: z.string().nullable().optional(),
+
   weaning_date: z.string().nullable().optional().refine(val => !val || new Date(val) <= new Date(), { message: 'La fecha no puede ser futura' }),
   weaning_weight_kg: z.preprocess((val) => (val === '' || val === null) ? undefined : Number(val), z.number().optional()),
   mother_weight_at_weaning: z.preprocess((val) => (val === '' || val === null) ? undefined : Number(val), z.number().optional()),
   sc_at_weaning: z.preprocess((val) => (val === '' || val === null) ? undefined : Number(val), z.number().optional()),
   weaning_observations: z.string().nullable().optional(),
+
   father_id: z.string().nullable().optional(),
   mother_id: z.string().nullable().optional(),
+
   current_weight_kg: z.preprocess((val) => (val === '' || val === null) ? undefined : Number(val), z.number().optional()),
+  current_sc_cm: z.preprocess((val) => (val === '' || val === null) ? undefined : Number(val), z.number().optional()),
   observations: z.string().nullable().optional(),
   status: z.enum(['Activo', 'Inactivo']).default('Activo'),
   inactivity_reason: z.string().nullable().optional(),
 });
 
-const ImageUploader = ({ preview, onCapture, onRemove, label }) => {
+// --- SUB-COMPONENTE REUTILIZABLE PARA IMÁGENES ---
+const ImageUploader = ({ preview, onCapture, onRemove, label, id }) => {
   const inputRef = useRef(null);
   return (
     <div
@@ -69,31 +75,38 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
   const navigate = useNavigate();
   const [activeAccordions, setActiveAccordions] = useState({ birth: false, weaning: false, service: false });
   const [eventIds, setEventIds] = useState({ birth: null, weaning: null });
+
   const [images, setImages] = useState({
     main: { blob: null, preview: initialValues?.photo_path || null },
     birth: { blob: null, preview: null },
     weaning: { blob: null, preview: null }
   });
+
   const [toast, setToast] = useState({ show: false, type: 'success', message: '' });
+
   const [showQuickService, setShowQuickService] = useState(false);
   const [isSavingQuickService, setIsSavingQuickService] = useState(false);
   const [quickServiceData, setQuickServiceData] = useState({ date: '', type: 'Monta Natural' });
 
+  const defaultValuesMapped = useMemo(() => {
+    if (!initialValues) return { sex: 'Macho', status: 'Activo' };
+    return {
+      ...initialValues,
+      current_weight_kg: initialValues.last_weight_kg,
+    };
+  }, [initialValues]);
+
   const { register, handleSubmit, setValue, watch, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(animalSchema),
-    defaultValues: useMemo(() => {
-      if (!initialValues) return { sex: 'Macho', status: 'Activo' };
-      return { ...initialValues, current_weight_kg: initialValues.last_weight_kg };
-    }, [initialValues])
+    defaultValues: defaultValuesMapped
   });
 
   const selectedSex = watch('sex');
   const selectedStatus = watch('status');
   const fatherId = watch('father_id');
   const motherId = watch('mother_id');
-  const originServiceId = watch('origin_service_id');
 
-  // Carga de eventos existentes (Se mantiene igual)
+  // --- CARGA DE DATOS AL EDITAR ---
   useEffect(() => {
     const loadExistingEvents = async () => {
       if (!initialValues?.id) return;
@@ -129,24 +142,53 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
       if (!motherId) return [];
       const services = await db.services.where('mother_id').equals(motherId).toArray();
       const validServices = services.filter(s => !s.deleted_at);
+
       const fatherIds = validServices.map(s => s.father_id).filter(Boolean);
       const fathers = fatherIds.length > 0 ? await db.animals.where('id').anyOf(fatherIds).toArray() : [];
+
       const fatherMap = {};
       fathers.forEach(f => { fatherMap[f.id] = f.number; });
+
       return validServices.map(service => ({
         ...service,
         father_number: service.father_id ? (fatherMap[service.father_id] || null) : null
       }));
-    }, [motherId]
+    },
+    [motherId]
   );
+
+  const toggleAccordion = (section) => {
+    setActiveAccordions(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const originServiceId = watch('origin_service_id');
 
   const motherServicesOptions = useMemo(() => {
     if (!motherServices) return [];
-    return motherServices.map(s => ({
-      value: s.id,
-      label: `${new Date(s.service_date).toLocaleDateString()} - ${s.type_conception} ${s.father_number ? `(Toro: #${s.father_number})` : ''}`
-    }));
+    return motherServices.map(s => {
+      let toroInfo = '';
+      if (s.father_number) {
+        toroInfo = ` (Toro: #${s.father_number})`;
+      } else if (s.father_id) {
+        if (s.father_id.includes('-') && s.father_id.length > 20) {
+          toroInfo = ` (Toro: Desconocido/Eliminado)`;
+        } else {
+          toroInfo = ` (Toro: ${s.father_id})`;
+        }
+      } else {
+        toroInfo = ` (Sin Toro)`;
+      }
+      return {
+        value: s.id,
+        label: `${new Date(s.service_date).toLocaleDateString()} - ${s.type_conception}${toroInfo}`
+      };
+    });
   }, [motherServices]);
+
+  const serviceTypeOptions = [
+    { value: 'Monta Natural', label: 'Monta Natural' },
+    { value: 'Inseminación Artificial', label: 'Inseminación Artificial' },
+  ];
 
   const handleImageCapture = async (e, type) => {
     const file = e.target.files[0];
@@ -157,6 +199,7 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
       setImages(prev => ({ ...prev, [type]: { blob: compressedBlob, preview: previewUrl } }));
     } catch (error) {
       console.error('Error procesando imagen:', error);
+      alert('Error al comprimir la foto.');
     }
   };
 
@@ -164,17 +207,25 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
     setImages(prev => ({ ...prev, [type]: { blob: null, preview: null } }));
   };
 
-  // --- FASE 2: BLINDAJE LOCAL (Cero espera a Supabase) ---
+  // --- LÓGICA LOCAL-FIRST (Fase 2) ---
   const getLocalUserId = () => {
     return localStorage.getItem("ganadera_user_id");
   };
 
   const handleQuickServiceCreate = async () => {
-    if (!quickServiceData.date) return alert('Selecciona una fecha');
+    if (!quickServiceData.date) return alert('Selecciona una fecha para el servicio');
+    if (isSavingQuickService) return;
+
     setIsSavingQuickService(true);
+
     try {
       const userId = getLocalUserId();
-      if (!userId) return navigate('/login');
+
+      if (!userId) {
+        setToast({ show: true, type: 'error', message: 'Sesión expirada. Conéctate a internet.' });
+        navigate('/login');
+        return;
+      }
 
       const newService = {
         id: crypto.randomUUID(),
@@ -192,14 +243,18 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
         await addToSyncQueue('services', 'INSERT', newService);
       });
 
-      setToast({ show: true, type: 'success', message: 'Servicio registrado' });
+      setToast({ show: true, type: 'success', message: 'Servicio registrado correctamente' });
+
       setTimeout(() => {
         setToast({ show: false, type: 'success', message: '' });
         setValue('origin_service_id', newService.id);
         setShowQuickService(false);
-      }, 400);
+      }, 500);
+
     } catch (err) {
-      console.error(err);
+      console.error('Error creando servicio rápido', err);
+      setToast({ show: true, type: 'error', message: 'Fallo al registrar servicio' });
+      setTimeout(() => setToast(p => ({ ...p, show: false })), 3000);
     } finally {
       setIsSavingQuickService(false);
     }
@@ -208,11 +263,31 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
   const handleSave = async (data) => {
     try {
       const userId = getLocalUserId();
-      if (!userId) return navigate('/login');
+
+      if (!userId) {
+        alert('Sesión expirada. Por favor, conéctate a internet e inicia sesión nuevamente.');
+        navigate('/login');
+        return;
+      }
 
       const isEditing = !!initialValues?.id;
       const animalId = initialValues?.id || crypto.randomUUID();
       const now = new Date().toISOString();
+
+      const mainImg = {
+        blob: images.main.blob || null,
+        url: isEditing ? initialValues?.photo_path : null
+      };
+
+      const birthImg = {
+        blob: images.birth.blob || null,
+        url: images.birth.preview && typeof images.birth.preview === 'string' && !images.birth.preview.startsWith('blob:') ? images.birth.preview : null
+      };
+
+      const weaningImg = {
+        blob: images.weaning.blob || null,
+        url: images.weaning.preview && typeof images.weaning.preview === 'string' && !images.weaning.preview.startsWith('blob:') ? images.weaning.preview : null
+      };
 
       await db.transaction('rw', [db.animals, db.growth_events, db.sync_queue], async () => {
         const animalData = {
@@ -221,32 +296,44 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
           number: data.number,
           sex: data.sex,
           status: data.status || 'Activo',
-          inactivity_reason: data.status === 'Inactivo' ? data.inactivity_reason : null,
+          inactivity_reason: data.status === 'Inactivo' ? (data.inactivity_reason || 'No se especificó una razón para la baja del animal.') : null,
           color: data.color || null,
           birth_date: data.birth_date || null,
           mother_id: data.mother_id || null,
           father_id: data.father_id || null,
           origin_service_id: data.origin_service_id || null,
           observations: data.observations || null,
-          photo_path: isEditing ? initialValues?.photo_path : null,
-          photo_blob: images.main.blob || (isEditing ? initialValues.photo_blob : null),
+          photo_path: mainImg.url,
+          photo_blob: mainImg.blob || (isEditing ? initialValues.photo_blob : null),
           last_weight_kg: data.current_weight_kg || data.weaning_weight_kg || data.birth_weight_kg || (isEditing ? initialValues.last_weight_kg : null),
-          last_weight_date: data.current_weight_kg ? now : (data.weaning_weight_kg ? data.weaning_date : now),
+          last_weight_date: data.current_weight_kg ? now : (data.weaning_weight_kg ? data.weaning_date : (data.birth_weight_kg ? data.birth_date : (isEditing ? initialValues.last_weight_date : null))),
           created_at: isEditing ? initialValues.created_at : now,
           updated_at: now,
           deleted_at: null
         };
 
-        await db.animals.put(animalData);
-        await addToSyncQueue('animals', isEditing ? 'UPDATE' : 'INSERT', animalData);
+        if (isEditing) {
+          await db.animals.put(animalData);
+          await addToSyncQueue('animals', 'UPDATE', animalData);
+        } else {
+          await db.animals.add(animalData);
+          await addToSyncQueue('animals', 'INSERT', animalData);
+        }
 
         if (data.birth_date) {
           const birthEvent = {
             id: eventIds.birth || crypto.randomUUID(),
-            user_id: userId, animal_id: animalId, event_type: 'Nacimiento', event_date: data.birth_date,
-            weight_kg: data.birth_weight_kg || null, mother_weight_kg: data.mother_weight_at_birth || null,
-            navel_length: data.navel_length || null, observations: data.birth_observations || null,
-            photo_blob: images.birth.blob || (eventIds.birth && isEditing ? undefined : null),
+            user_id: userId,
+            animal_id: animalId,
+            event_type: 'Nacimiento',
+            event_date: data.birth_date,
+            weight_kg: data.birth_weight_kg || null,
+            mother_weight_kg: data.mother_weight_at_birth || null,
+            navel_length: data.navel_length || null,
+            observations: data.birth_observations || null,
+            photo_path: birthImg.url,
+            photo_blob: birthImg.blob || (eventIds.birth && isEditing ? undefined : null),
+            created_at: eventIds.birth ? undefined : now,
             updated_at: now
           };
           await db.growth_events.put(birthEvent);
@@ -256,10 +343,17 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
         if (data.weaning_date) {
           const weaningEvent = {
             id: eventIds.weaning || crypto.randomUUID(),
-            user_id: userId, animal_id: animalId, event_type: 'Destete', event_date: data.weaning_date,
-            weight_kg: data.weaning_weight_kg || null, mother_weight_kg: data.mother_weight_at_weaning || null,
-            scrotal_circumference_cm: data.sc_at_weaning || null, observations: data.weaning_observations || null,
-            photo_blob: images.weaning.blob || (eventIds.weaning && isEditing ? undefined : null),
+            user_id: userId,
+            animal_id: animalId,
+            event_type: 'Destete',
+            event_date: data.weaning_date,
+            weight_kg: data.weaning_weight_kg || null,
+            mother_weight_kg: data.mother_weight_at_weaning || null,
+            scrotal_circumference_cm: data.sc_at_weaning || null,
+            observations: data.weaning_observations || null,
+            photo_path: weaningImg.url,
+            photo_blob: weaningImg.blob || (eventIds.weaning && isEditing ? undefined : null),
+            created_at: eventIds.weaning ? undefined : now,
             updated_at: now
           };
           await db.growth_events.put(weaningEvent);
@@ -267,149 +361,353 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
         }
       });
 
-      setToast({ show: true, type: 'success', message: isEditing ? 'Cambios guardados' : 'Registro exitoso' });
+      setToast({
+        show: true,
+        type: 'success',
+        message: isEditing ? 'Cambios guardados exitosamente' : 'Animal registrado con éxito'
+      });
+
       setTimeout(() => {
         setToast({ show: false, type: 'success', message: '' });
         onSubmitSuccess && onSubmitSuccess(animalId);
-      }, 400);
+      }, 500);
 
     } catch (err) {
-      console.error(err);
-      setToast({ show: true, type: 'error', message: 'Error al guardar' });
+      console.error('Error guardando animal:', err);
+      setToast({ show: true, type: 'error', message: 'Error al procesar la información' });
+      setTimeout(() => setToast(p => ({ ...p, show: false })), 3000);
     }
   };
 
   return (
     <form onSubmit={handleSubmit(handleSave)} className="pb-10">
-      {/* Toast de notificación */}
       {toast.show && (
         <div className={`fixed z-[100] px-5 py-4 ${toast.type === 'success' ? 'bg-[#1A3621]' : 'bg-red-900'} text-white rounded-2xl shadow-2xl transition-all animate-in fade-in slide-in-from-top-5 top-5 left-1/2 -translate-x-1/2 sm:left-auto sm:right-6 sm:-translate-x-0 font-bold text-sm flex items-center gap-3 w-[85%] max-w-sm sm:w-auto`}>
-          {toast.type === 'success' ? <CheckCircle className="w-6 h-6 text-emerald-400" /> : <TriangleAlert className="w-6 h-6 text-red-400" />}
+          {toast.type === 'success' ? (
+            <CheckCircle className="w-6 h-6 text-emerald-400" />
+          ) : (
+            <TriangleAlert className="w-6 h-6 text-red-400" />
+          )}
           {toast.message}
         </div>
       )}
 
-      {/* Identificación Visual */}
+      {/* 0. IDENTIFICACIÓN VISUAL */}
       <section className="bg-[#F4F5F0] rounded-3xl p-5 mb-4 shadow-sm border border-neutral-100/50">
         <div className="mb-5">
-          <ImageUploader label="Foto del Animal" preview={images.main.preview} onCapture={(e) => handleImageCapture(e, 'main')} onRemove={() => removeImage('main')} />
+          <ImageUploader id="main" label="Foto del Animal" preview={images.main.preview} onCapture={(e) => handleImageCapture(e, 'main')} onRemove={() => removeImage('main')} />
         </div>
         <div>
-          <label className="text-sm font-bold text-[#1B4820] mb-2 block">Descripción</label>
-          <textarea {...register('observations')} placeholder="..." rows={3} className="w-full bg-white rounded-2xl px-4 py-3 text-neutral-800 border border-transparent focus:border-[#1B4820]/30 transition-all shadow-sm resize-none" />
+          <label className="text-sm font-bold text-[#1B4820] mb-2 block">Descripción del ganadero</label>
+          <textarea {...register('observations')} placeholder="Añade una descripción visual del animal..." rows={3} className="w-full bg-white rounded-2xl px-4 py-3 text-neutral-800 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#1B4820]/20 border border-transparent focus:border-[#1B4820]/30 transition-all shadow-sm resize-none" />
         </div>
       </section>
 
-      {/* Identificación Básica */}
+      {/* 1. IDENTIFICACIÓN BÁSICA */}
       <section className="bg-neutral-50 rounded-3xl p-5 mb-4 border border-neutral-100 space-y-4">
+        <h3 className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 mb-2 block">Identificación Básica</h3>
+
         <div>
           <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Código / Número *</label>
-          <input {...register('number')} placeholder="Ej: 1234" className={`w-full bg-white rounded-xl px-4 py-3 border transition-all ${errors.number ? 'border-red-500' : 'border-neutral-100'}`} />
+          <input {...register('number')} placeholder="Ej: 1234" className={`w-full bg-white rounded-xl px-4 py-3 text-neutral-800 placeholder-neutral-400 border transition-all focus:outline-none focus:ring-2 focus:ring-[#1B4820]/20 ${errors.number ? 'border-red-500' : 'border-neutral-100 focus:border-[#1B4820]/30'}`} />
           {errors.number && <p className="text-red-500 text-[10px] mt-1 ml-1">{errors.number.message}</p>}
         </div>
+
         <div>
-          <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Sexo</label>
+          <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Sexo del Animal</label>
           <div className="grid grid-cols-2 gap-3">
-            <button type="button" onClick={() => setValue('sex', 'Macho')} className={`py-3 rounded-xl font-bold text-sm transition-all border ${selectedSex === 'Macho' ? 'bg-[#1B4820] text-white border-[#1B4820]' : 'bg-white text-neutral-500 border-neutral-100'}`}>MACHO</button>
-            <button type="button" onClick={() => setValue('sex', 'Hembra')} className={`py-3 rounded-xl font-bold text-sm transition-all border ${selectedSex === 'Hembra' ? 'bg-[#1B4820] text-white border-[#1B4820]' : 'bg-white text-neutral-500 border-neutral-100'}`}>HEMBRA</button>
+            <button type="button" onClick={() => setValue('sex', 'Macho')} className={`py-3 rounded-xl font-bold text-sm transition-all border cursor-pointer ${selectedSex === 'Macho' ? 'bg-[#1B4820] text-white border-[#1B4820]' : 'bg-white text-neutral-500 border-neutral-100'}`}>MACHO</button>
+            <button type="button" onClick={() => setValue('sex', 'Hembra')} className={`py-3 rounded-xl font-bold text-sm transition-all border cursor-pointer ${selectedSex === 'Hembra' ? 'bg-[#1B4820] text-white border-[#1B4820]' : 'bg-white text-neutral-500 border-neutral-100'}`}>HEMBRA</button>
           </div>
+        </div>
+
+        <div>
+          <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Color del Animal</label>
+          <input {...register('color')} placeholder="Ej: Rojo Suave" className="w-full bg-white rounded-xl px-4 py-3 text-neutral-800 placeholder-neutral-400 border border-neutral-100 focus:outline-none focus:ring-2 focus:ring-[#1B4820]/20" />
         </div>
       </section>
 
-      {/* Estado */}
+      {/* ESTADO Y DISPONIBILIDAD */}
       <section className="bg-white rounded-3xl p-5 mb-4 border border-neutral-100 shadow-sm space-y-4">
-        <CustomSelect label="Estado" value={selectedStatus} onChange={(val) => setValue('status', val)} options={[{ value: 'Activo', label: '🟢 Activo' }, { value: 'Inactivo', label: '🔴 Inactivo' }]} />
+        <div>
+          <CustomSelect
+            label="Estado del Animal"
+            value={selectedStatus}
+            onChange={(val) => setValue('status', val)}
+            options={[
+              { value: 'Activo', label: '🟢 Activo (En el inventario)' },
+              { value: 'Inactivo', label: '🔴 Inactivo (Vendido, Muerte, etc.)' }
+            ]}
+          />
+        </div>
+
         {selectedStatus === 'Inactivo' && (
-          <textarea {...register('inactivity_reason')} placeholder="Razón de baja..." className="w-full bg-neutral-50 rounded-xl px-4 py-3 text-sm border border-neutral-100 min-h-[100px] resize-none" />
+          <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+            <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Razón de la Inactividad</label>
+            <textarea
+              {...register('inactivity_reason')}
+              placeholder="Ej: Vendido para carne, muerte por enfermedad..."
+              className="w-full bg-neutral-50 rounded-xl px-4 py-3 text-sm text-neutral-800 placeholder-neutral-400 border border-neutral-100 focus:outline-none focus:ring-2 focus:ring-[#1B4820]/20 min-h-[100px] resize-none"
+            />
+          </div>
         )}
       </section>
 
-      {/* Genealogía */}
+      {/* GENEALOGÍA */}
       <section className="bg-neutral-100/50 rounded-3xl p-5 mb-4 border border-neutral-100 space-y-4">
-        <h3 className="text-lg font-bold text-[#1B4820]">Genealogía</h3>
-        <GenealogySelector label="Padre" sex="Macho" value={fatherId} onChange={(id) => setValue('father_id', id)} onCreateNew={(sex) => onOpenModal && onOpenModal(sex, (id) => setValue('father_id', id))} />
-        <GenealogySelector label="Madre" sex="Hembra" value={motherId} onChange={(id) => setValue('mother_id', id)} onCreateNew={(sex) => onOpenModal && onOpenModal(sex, (id) => setValue('mother_id', id))} />
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-1 h-5 rounded-full bg-[#8C6746]"></div>
+          <h3 className="text-lg font-bold text-[#1B4820]">Genealogía</h3>
+        </div>
+
+        <div>
+          <GenealogySelector label="Padre (Toro)" sex="Macho" value={fatherId} onChange={(id) => setValue('father_id', id)} onCreateNew={(sex) => onOpenModal && onOpenModal(sex, (id) => setValue('father_id', id))} />
+        </div>
+
+        <div>
+          <GenealogySelector label="Madre (Vaca)" sex="Hembra" value={motherId} onChange={(id) => setValue('mother_id', id)} onCreateNew={(sex) => onOpenModal && onOpenModal(sex, (id) => setValue('mother_id', id))} />
+        </div>
       </section>
 
-      {/* Servicio de Origen */}
+      {/* ACORDEÓN: SERVICIO DE ORIGEN */}
       {motherId && (
         <div className="bg-neutral-50 rounded-3xl p-5 mb-4 border border-neutral-100">
-          <div className="flex items-center justify-between cursor-pointer" onClick={() => setActiveAccordions(p => ({ ...p, service: !p.service }))}>
-            <h3 className="text-lg font-bold text-[#1B4820]">Servicio de Origen</h3>
-            {activeAccordions.service ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+          <div className="flex items-center justify-between cursor-pointer" onClick={() => toggleAccordion('service')}>
+            <div className="flex items-center gap-3">
+              <div className="w-1 h-5 rounded-full bg-blue-500"></div>
+              <h3 className="text-lg font-bold text-[#1B4820]">Servicio de Origen</h3>
+            </div>
+            {activeAccordions.service ? <ChevronUp className="w-5 h-5 text-neutral-500" /> : <ChevronDown className="w-5 h-5 text-neutral-500" />}
           </div>
-          {activeAccordions.service && (
-            <div className="pt-5 space-y-4">
-              {showQuickService ? (
-                <div className="bg-white p-4 rounded-2xl border border-neutral-200 space-y-4">
-                  <input type="date" value={quickServiceData.date} onChange={e => setQuickServiceData(d => ({ ...d, date: e.target.value }))} className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3" />
-                  <div className="flex gap-3">
-                    <button type="button" onClick={() => setShowQuickService(false)} className="flex-1 bg-neutral-100 py-3 rounded-xl font-bold text-xs">Cancelar</button>
-                    <button type="button" disabled={isSavingQuickService} onClick={handleQuickServiceCreate} className="flex-1 bg-[#1B4820] text-white py-3 rounded-xl font-bold text-xs">
-                      {isSavingQuickService ? '...' : 'Guardar y Usar'}
+
+          <div className={`grid transition-all duration-300 ease-in-out ${activeAccordions.service ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+            <div className="overflow-hidden">
+              <div className="pt-5 space-y-4">
+                {motherServices === undefined ? (
+                  <p className="text-sm text-neutral-500">Cargando servicios...</p>
+                ) : showQuickService ? (
+                  <div className="bg-white p-4 rounded-2xl border border-neutral-200 shadow-sm space-y-4">
+                    <h4 className="text-[10px] font-black uppercase text-[#1B4820] tracking-widest border-b border-neutral-100 pb-2">Nuevo Servicio Rápido</h4>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Fecha del Servicio</label>
+                      <input type="date" value={quickServiceData.date} onChange={e => setQuickServiceData(d => ({ ...d, date: e.target.value }))} className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Tipo de Concepción</label>
+                      <CustomSelect
+                        value={quickServiceData.type}
+                        onChange={val => setQuickServiceData(d => ({ ...d, type: val }))}
+                        options={serviceTypeOptions}
+                        bgClass="bg-neutral-50"
+                      />
+                    </div>
+
+                    <div className="flex gap-3 pt-2">
+                      <button type="button" disabled={isSavingQuickService} onClick={() => setShowQuickService(false)} className="flex-1 bg-neutral-100 hover:bg-neutral-200 text-neutral-600 text-xs font-bold py-3.5 rounded-xl transition-colors cursor-pointer disabled:cursor-not-allowed">Cancelar</button>
+                      <button type="button" disabled={isSavingQuickService} onClick={handleQuickServiceCreate} className="flex-1 bg-[#1B4820] hover:bg-[#0F2912] text-white text-xs font-bold py-3.5 rounded-xl disabled:opacity-50 transition-all shadow-sm cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                        {isSavingQuickService ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            GUARDANDO...
+                          </>
+                        ) : 'Guardar y Usar'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {motherServices.length === 0 ? (
+                      <div className="text-center bg-white border border-neutral-100 p-4 rounded-2xl">
+                        <p className="text-xs text-neutral-500 mb-2 font-medium">Esta madre no tiene servicios registrados.</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Seleccionar Servicio</label>
+                        <CustomSelect
+                          value={originServiceId}
+                          onChange={val => setValue('origin_service_id', val)}
+                          options={motherServicesOptions}
+                          placeholder="Selecciona el servicio origen..."
+                        />
+                      </div>
+                    )}
+
+                    <button type="button" onClick={() => setShowQuickService(true)} className="w-full flex items-center justify-center gap-2 bg-neutral-50 border border-dashed border-neutral-300 hover:border-[#1B4820] hover:text-[#1B4820] hover:bg-emerald-50 text-neutral-600 font-bold py-3.5 rounded-xl transition-all text-xs cursor-pointer">
+                      <Plus className="w-4 h-4" />
+                      REGISTRAR NUEVO SERVICIO
                     </button>
                   </div>
-                </div>
-              ) : (
-                <>
-                  <CustomSelect value={originServiceId} onChange={val => setValue('origin_service_id', val)} options={motherServicesOptions} placeholder="Seleccionar servicio..." />
-                  <button type="button" onClick={() => setShowQuickService(true)} className="w-full flex items-center justify-center gap-2 bg-neutral-50 border border-dashed border-neutral-300 py-3.5 rounded-xl font-bold text-xs">
-                    <Plus className="w-4 h-4" /> REGISTRAR NUEVO SERVICIO
-                  </button>
-                </>
-              )}
+                )}
+              </div>
             </div>
-          )}
+          </div>
         </div>
       )}
 
-      {/* Eventos: Nacimiento y Destete (Simplificados visualmente para el código) */}
+      {/* ACORDEÓN: NACIMIENTO */}
       <div className="bg-neutral-50 rounded-3xl p-5 mb-4 border border-neutral-100">
-        <div className="flex items-center justify-between cursor-pointer" onClick={() => setActiveAccordions(p => ({ ...p, birth: !p.birth }))}>
-          <h3 className="text-lg font-bold text-[#1B4820]">Evento: Nacimiento</h3>
-          {activeAccordions.birth ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-        </div>
-        {activeAccordions.birth && (
-          <div className="pt-5 space-y-4">
-            <ImageUploader label="Foto al Nacer" preview={images.birth.preview} onCapture={(e) => handleImageCapture(e, 'birth')} onRemove={() => removeImage('birth')} />
-            <input type="date" {...register('birth_date')} className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100" />
-            <input type="number" step="any" {...register('birth_weight_kg')} placeholder="Peso al Nacer (KG)" className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100" />
+        <div className="flex items-center justify-between cursor-pointer" onClick={() => toggleAccordion('birth')}>
+          <div className="flex items-center gap-3">
+            <div className="w-1 h-5 rounded-full bg-emerald-600"></div>
+            <h3 className="text-lg font-bold text-[#1B4820]">Evento: Nacimiento</h3>
           </div>
-        )}
+          {activeAccordions.birth ? <ChevronUp className="w-5 h-5 text-neutral-500" /> : <ChevronDown className="w-5 h-5 text-neutral-500" />}
+        </div>
+        <div className={`grid transition-all duration-300 ease-in-out ${activeAccordions.birth ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+          <div className="overflow-hidden">
+            <div className="pt-5 space-y-4">
+              <ImageUploader id="birth" label="Foto al Nacer" preview={images.birth.preview} onCapture={(e) => handleImageCapture(e, 'birth')} onRemove={() => removeImage('birth')} />
+
+              <div>
+                <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Fecha de Nacimiento</label>
+                <input type="date" {...register('birth_date')} className="w-full bg-white rounded-xl px-4 py-3 text-neutral-800 border border-neutral-100 focus:outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Peso de la Cría al Nacer (KG)</label>
+                <input type="number" step="any" {...register('birth_weight_kg')} placeholder="Ej: 35" className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100 outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Peso Madre al Parto (KG)</label>
+                <input type="number" step="any" {...register('mother_weight_at_birth')} placeholder="Ej: 450" className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100 outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Longitud del Ombligo (CM)</label>
+                <input {...register('navel_length')} placeholder="Ej: 5" className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100 outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Observaciones del Parto</label>
+                <textarea {...register('birth_observations')} placeholder="Detalles u observaciones del parto..." rows={2} className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100 outline-none resize-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
+      {/* ACORDEÓN: DESTETE */}
       <div className="bg-neutral-50 rounded-3xl p-5 mb-4 border border-neutral-100">
-        <div className="flex items-center justify-between cursor-pointer" onClick={() => setActiveAccordions(p => ({ ...p, weaning: !p.weaning }))}>
-          <h3 className="text-lg font-bold text-[#1B4820]">Evento: Destete</h3>
-          {activeAccordions.weaning ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-        </div>
-        {activeAccordions.weaning && (
-          <div className="pt-5 space-y-4">
-            <ImageUploader label="Foto al Destete" preview={images.weaning.preview} onCapture={(e) => handleImageCapture(e, 'weaning')} onRemove={() => removeImage('weaning')} />
-            <input type="date" {...register('weaning_date')} className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100" />
-            <input type="number" step="any" {...register('weaning_weight_kg')} placeholder="Peso al Destete (KG)" className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100" />
+        <div className="flex items-center justify-between cursor-pointer" onClick={() => toggleAccordion('weaning')}>
+          <div className="flex items-center gap-3">
+            <div className="w-1 h-5 rounded-full bg-amber-600"></div>
+            <h3 className="text-lg font-bold text-[#1B4820]">Evento: Destete</h3>
           </div>
-        )}
+          {activeAccordions.weaning ? <ChevronUp className="w-5 h-5 text-neutral-500" /> : <ChevronDown className="w-5 h-5 text-neutral-500" />}
+        </div>
+        <div className={`grid transition-all duration-300 ease-in-out ${activeAccordions.weaning ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+          <div className="overflow-hidden">
+            <div className="pt-5 space-y-4">
+              <ImageUploader id="weaning" label="Foto al Destete" preview={images.weaning.preview} onCapture={(e) => handleImageCapture(e, 'weaning')} onRemove={() => removeImage('weaning')} />
+
+              <div>
+                <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Fecha de Destete</label>
+                <input type="date" {...register('weaning_date')} className="w-full bg-white rounded-xl px-4 py-3 text-neutral-800 border border-neutral-100 focus:outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Peso al Destete (KG)</label>
+                <input type="number" step="any" {...register('weaning_weight_kg')} placeholder="Ej: 180" className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100 outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Circ. Escrotal al Destete (CM)</label>
+                <input type="number" step="any" {...register('sc_at_weaning')} placeholder="Ej: 20" className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100 outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Peso Madre al Destete (KG)</label>
+                <input type="number" step="any" {...register('mother_weight_at_weaning')} placeholder="Ej: 420" className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100 outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Observaciones del Destete</label>
+                <textarea {...register('weaning_observations')} placeholder="Detalles u observaciones del destete..." rows={2} className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100 outline-none resize-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Peso Actual */}
+      {/* MEDIDAS ACTUALES */}
       <section className="bg-neutral-50 rounded-3xl p-5 mb-4 border border-neutral-100">
-        <h3 className="text-lg font-bold text-[#1B4820] mb-4">Peso Actual</h3>
-        <input type="number" step="any" {...register('current_weight_kg')} placeholder="Peso Actual (KG)" className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100" />
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-1 h-5 rounded-full bg-[#1B4820]"></div>
+          <h3 className="text-lg font-bold text-[#1B4820]">Peso Actual</h3>
+        </div>
+        <div className="grid grid-cols-1 gap-4">
+          <div>
+            <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Peso Actual (KG)</label>
+            <input type="number" step="any" {...register('current_weight_kg')} placeholder="Ej: 250" className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100 outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
+          </div>
+        </div>
       </section>
 
-      {/* Botones Flotantes (Footer) */}
+      {/* FOOTERS (¡Totalmente Restaurados!) */}
       {!isModal && (
         <div className="fixed bottom-0 left-0 w-full bg-[#fcfcfa]/90 backdrop-blur-md border-t border-neutral-100 p-4 z-40">
           <div className="max-w-md mx-auto grid grid-cols-2 gap-3">
-            <button type="button" onClick={onCancel} className="flex items-center justify-center gap-2 bg-[#D15E5A] text-white rounded-full py-4 font-bold text-xs uppercase tracking-widest">
-              <X className="w-5 h-5" strokeWidth={2.5} /> Cancelar
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={isSubmitting}
+              className="flex items-center justify-center gap-2 bg-[#D15E5A] hover:bg-[#B94545] text-white rounded-full py-4 transition-all active:scale-95 shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <X className="w-5 h-5" strokeWidth={2.5} />
+              <span className="text-xs font-bold uppercase tracking-widest">Cancelar</span>
             </button>
-            <button type="submit" disabled={isSubmitting} className="flex items-center justify-center gap-2 bg-[#1A3621] text-white rounded-full py-4 font-bold text-xs uppercase tracking-widest shadow-lg">
-              {isSubmitting ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Save className="w-5 h-5" strokeWidth={2.5} />}
-              Guardar
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="flex items-center justify-center gap-2 bg-[#1A3621] hover:bg-[#0F2912] text-white rounded-full py-4 transition-all active:scale-95 shadow-[0_4px_14px_rgba(26,54,33,0.3)] cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span className="text-xs font-bold uppercase tracking-widest">Guardando...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-5 h-5" strokeWidth={2.5} />
+                  <span className="text-xs font-bold uppercase tracking-widest">Guardar</span>
+                </>
+              )}
             </button>
           </div>
+        </div>
+      )}
+
+      {isModal && (
+        <div className="grid grid-cols-2 gap-3 mt-8">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isSubmitting}
+            className="flex items-center justify-center gap-2 bg-[#D15E5A] text-white rounded-full py-4 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+          >
+            <X className="w-5 h-5" strokeWidth={2.5} />
+            <span className="text-xs font-bold uppercase tracking-widest">Cancelar</span>
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="flex items-center justify-center gap-2 bg-[#1A3621] text-white rounded-full py-4 shadow-lg shadow-emerald-900/20 transition-all active:scale-95 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span className="text-xs font-bold uppercase tracking-widest">Guardando...</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-5 h-5" strokeWidth={2.5} />
+                <span className="text-xs font-bold uppercase tracking-widest">Guardar</span>
+              </>
+            )}
+          </button>
         </div>
       )}
     </form>
