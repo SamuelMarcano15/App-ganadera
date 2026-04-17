@@ -364,7 +364,7 @@ export default function InventarioPage() {
                         <div className={`inline-block px-2.5 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest text-white mb-2 ${animal.sex === 'Hembra' ? 'bg-pink-600' : 'bg-blue-700'}`}>
                           {animal.sex}
                         </div>
-                        <h2 className="text-2xl font-black text-black leading-tight mb-1">#{animal.number}</h2>
+                        <h2 className="text-lg sm:text-xl md:text-2xl font-black text-black leading-tight mb-1">#{animal.number}</h2>
                         <p className="text-xs text-neutral-700 font-bold uppercase tracking-wider">{calculateAge(animal.birth_date)}</p>
                       </div>
 

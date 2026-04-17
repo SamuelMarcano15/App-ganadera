@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, Syringe } from 'lucide-react';
+import { FaVenusMars } from 'react-icons/fa6';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
 import BottomSheet from '@/components/ui/BottomSheet';
@@ -64,7 +65,7 @@ export default function ServiciosTab({ animal }) {
         ))
       ) : (
         <div className="bg-white/50 p-10 rounded-2xl border border-dashed border-neutral-300 text-center">
-          <Syringe className="w-10 h-10 text-neutral-300 mx-auto mb-2" />
+          <FaVenusMars className="w-10 h-10 text-neutral-300 mx-auto mb-2" />
           <p className="text-sm text-neutral-400 font-bold uppercase tracking-widest">Sin servicios registrados</p>
         </div>
       )}
