@@ -1,7 +1,7 @@
 import React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
-import { Baby } from 'lucide-react';
+import { GiCow } from 'react-icons/gi';
 
 export default function PartosTab({ animalId }) {
   const offspring = useLiveQuery(
@@ -30,7 +30,7 @@ export default function PartosTab({ animalId }) {
         ))
       ) : (
         <div className="bg-white/50 p-10 rounded-2xl border border-dashed border-neutral-300 text-center">
-          <Baby className="w-10 h-10 text-neutral-300 mx-auto mb-2" />
+          <GiCow className="w-10 h-10 text-neutral-300 mx-auto mb-2" />
           <p className="text-sm text-neutral-400 font-bold uppercase tracking-widest">Sin partos registrados</p>
         </div>
       )}

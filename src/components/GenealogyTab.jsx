@@ -46,7 +46,7 @@ export default function GenealogyTab({ animal }) {
       <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full border-2 overflow-hidden bg-white shadow-md transition-transform hover:cursor-pointer hover:scale-110 ${
         variant === "main" ? 'border-[#1B4820] sm:w-24 sm:h-24 w-18 h-18 ring-4 ring-emerald-50' : 'border-neutral-200'
       }`}>
-        <AnimalImage photoPath={animal?.photo_path} photoBlob={animal?.photo_blob} className="w-full h-full" />
+        <AnimalImage photoPath={animal?.photo_path} photoBlob={animal?.photo_blob} className="w-full h-full object-cover" />
       </div>
       <div className="mt-1 text-center">
         <p className={`text-[10px] font-black leading-none ${variant === "main" ? 'text-[#1B4820] text-sm' : 'text-neutral-800'}`}>
@@ -63,7 +63,9 @@ export default function GenealogyTab({ animal }) {
       return <NodeContent animal={null} label={label} variant={variant} />;
     }
 
-    // --- ENLACE ACTUALIZADO A LA NUEVA RUTA CON PREFETCH ---
+    // --- ENLACE ACTUALIZADO ---
+    // Agregamos &tab=detalles (o el nombre que uses) para forzar que al hacer clic 
+    // se salga de la pestaña de genealogía y vuelva a la vista principal del perfil
     return (
       <Link to={`/inventario/perfil?id=${animal.id}`} className="block focus:outline-none">
         <NodeContent animal={animal} label={label} variant={variant} />
@@ -118,18 +120,20 @@ export default function GenealogyTab({ animal }) {
         <LevelIndicator text="Hijos" />
       </div>
 
-      {/* 4. NIVEL: HIJOS (Línea Horizontal) */}
-      <div className="flex justify-center gap-4 w-full overflow-x-auto py-2 no-scrollbar mb-4">
-        {data.children.length > 0 ? (
-          data.children.map(child => (
-            <Node key={child.id} animal={child} label={child.sex === 'Hembra' ? 'Hija' : 'Hijo'} />
-          ))
-        ) : (
-          <div className="flex flex-col items-center text-neutral-300 py-4 w-full">
-             <Share2 className="w-6 h-6 opacity-20" />
-             <p className="text-[8px] font-black uppercase mt-1">Sin Hijos</p>
-          </div>
-        )}
+      {/* 4. NIVEL: HIJOS (Línea Horizontal con Scroll Corregido) */}
+      <div className="w-full overflow-x-auto no-scrollbar py-2 mb-4">
+        <div className="flex gap-4 w-max mx-auto px-4">
+          {data.children.length > 0 ? (
+            data.children.map(child => (
+              <Node key={child.id} animal={child} label={child.sex === 'Hembra' ? 'Hija' : 'Hijo'} />
+            ))
+          ) : (
+            <div className="flex flex-col items-center text-neutral-300 py-4 w-full">
+               <Share2 className="w-6 h-6 opacity-20" />
+               <p className="text-[8px] font-black uppercase mt-1">Sin Hijos</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* LÍNEAS HIJOS -> NIETOS (Con Etiqueta) */}
@@ -140,11 +144,13 @@ export default function GenealogyTab({ animal }) {
             <LevelIndicator text="Nietos" />
           </div>
 
-          {/* 5. NIVEL: NIETOS (Línea Horizontal) */}
-          <div className="flex justify-center gap-4 w-full overflow-x-auto py-2 no-scrollbar">
-            {data.grandchildren.map(grandchild => (
-              <Node key={grandchild.id} animal={grandchild} label="Nieto(a)" />
-            ))}
+          {/* 5. NIVEL: NIETOS (Línea Horizontal con Scroll Corregido) */}
+          <div className="w-full overflow-x-auto no-scrollbar py-2">
+            <div className="flex gap-4 w-max mx-auto px-4">
+              {data.grandchildren.map(grandchild => (
+                <Node key={grandchild.id} animal={grandchild} label="Nieto(a)" />
+              ))}
+            </div>
           </div>
         </>
       )}
