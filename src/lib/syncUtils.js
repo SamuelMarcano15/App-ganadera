@@ -3,15 +3,12 @@ import { supabase } from './supabaseClient';
 import { useSyncStore } from '@/store/syncStore';
 import { uploadImageToSupabase } from './imageUtils';
 
-// Candado de seguridad a nivel de módulo
-let isSyncing = false; 
+let isSyncing = false;
 
 /**
  * 1. PUSH: De local a la Nube.
- * @returns {Promise<void>}
  */
 export async function processSyncQueue() {
-  // CORRECCIÓN CRÍTICA: Buscar tanto PENDING como ERROR para no dejar datos estancados
   const pendingItems = await db.sync_queue
     .where('status')
     .anyOf(['PENDING', 'ERROR'])
@@ -26,35 +23,27 @@ export async function processSyncQueue() {
     try {
       const payloadToUpload = { ...item.payload };
 
-      // --- MAGIA OFFLINE PARA IMÁGENES ---
+      // --- IMÁGENES ---
       if (payloadToUpload.photo_blob && !payloadToUpload.photo_path) {
         try {
           const fileName = `offline-sync-${item.table_name}-${payloadToUpload.id}`;
           const url = await uploadImageToSupabase(payloadToUpload.photo_blob, fileName);
-          
-          payloadToUpload.photo_path = url; 
+          payloadToUpload.photo_path = url;
           await db.table(item.table_name).update(payloadToUpload.id, { photo_path: url });
         } catch (imgErr) {
-          console.error('[Sync Engine] Error subiendo imagen rezagada', imgErr);
-          throw new Error('No se pudo subir la imagen pendiente a la nube.');
+          throw new Error(`Error de red/auth al subir imagen: ${imgErr.message}`);
         }
       }
 
-      // Borramos el Blob crudo para que PostgreSQL no explote
-      delete payloadToUpload.photo_blob; 
+      delete payloadToUpload.photo_blob;
 
-      // --- SUBIDA A BASE DE DATOS RELACIONAL ---
+      // --- SUBIDA A BASE DE DATOS ---
       let error;
       if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
-        const { error: upsertError } = await supabase
-          .from(item.table_name)
-          .upsert(payloadToUpload);
+        const { error: upsertError } = await supabase.from(item.table_name).upsert(payloadToUpload);
         error = upsertError;
       } else if (item.operation === 'DELETE') {
-        const { error: deleteError } = await supabase
-          .from(item.table_name)
-          .delete()
-          .eq('id', item.payload.id);
+        const { error: deleteError } = await supabase.from(item.table_name).delete().eq('id', item.payload.id);
         error = deleteError;
       }
 
@@ -62,41 +51,51 @@ export async function processSyncQueue() {
 
       // Éxito: Eliminar de la cola local
       await db.sync_queue.delete(item.id);
-      
+
       const currentCount = await db.sync_queue.where('status').anyOf(['PENDING', 'ERROR']).count();
       store.setPendingItemsCount(currentCount);
 
     } catch (err) {
-      console.error(`[Sync Engine] Error subiendo item ${item.id}:`, err);
-      
-      // CORRECCIÓN CRÍTICA: Si falla, lo devolvemos a PENDING en lugar de ERROR permanente 
-      // para que el próximo ciclo lo vuelva a intentar sin "asustar" a la UI para siempre
-      await db.sync_queue.update(item.id, { 
-        status: 'PENDING', 
-        error_message: err.message || 'Error desconocido, se reintentará' 
+      // FASE 4: CAPTURA INTELIGENTE DE ERRORES
+      const errMsg = (err.message || '').toLowerCase();
+
+      // Siempre lo devolvemos a PENDING (no a ERROR) para que la UI no se asuste
+      await db.sync_queue.update(item.id, {
+        status: 'PENDING',
+        error_message: err.message || 'Error desconocido, se reintentará'
       });
-      
-      continue; 
+
+      // Si el error es de sesión caducada (JWT), permisos (401), o falta de red real (fetch)
+      // ABORTAMOS el bucle silenciosamente. No tiene sentido intentar subir los demás.
+      if (errMsg.includes('jwt') || errMsg.includes('auth') || errMsg.includes('fetch') || err.code === 'PGRST301' || err.status === 401) {
+        console.warn('[Sync Engine] Sesión caducada o red inaccesible. Sincronización pausada silenciosamente.');
+        break; // Rompe el ciclo for. El resto de items se quedan PENDING.
+      }
+
+      // Si es otro tipo de error (ej. dato mal formateado), continúa con el siguiente item
+      continue;
     }
   }
 }
 
 /**
  * 2. PULL: De Nube a Local
- * @returns {Promise<void>}
  */
 export async function pullFromServer() {
-  const { data: { session } } = await supabase.auth.getSession();
-  const user = session?.user;
-  if (!user) return;
+  // FASE 4: Validar sesión de forma segura y silenciosa
+  const { data: { session }, error: authError } = await supabase.auth.getSession();
 
+  // Si no hay sesión válida o hubo un error de auth, abortamos en silencio
+  if (authError || !session?.user) {
+    console.warn('[Sync Engine] PULL abortado: No hay sesión activa en el servidor.');
+    return;
+  }
+
+  const user = session.user;
   const lastSync = localStorage.getItem('lastSyncTimestamp') || '1970-01-01T00:00:00Z';
   const currentSyncTime = new Date().toISOString();
 
-  /** @type {Array<'animals' | 'growth_events' | 'services' | 'pregnancy_checks' | 'health_records'>} */
-  const tables = [
-    'animals', 'growth_events', 'services', 'pregnancy_checks', 'health_records'
-  ];
+  const tables = ['animals', 'growth_events', 'services', 'pregnancy_checks', 'health_records'];
 
   for (const table of tables) {
     const { data: serverData, error } = await supabase
@@ -105,7 +104,11 @@ export async function pullFromServer() {
       .eq('user_id', user.id)
       .gt('updated_at', lastSync);
 
-    if (error) throw error;
+    // Si la descarga falla (ej. pérdida súbita de señal), abortar
+    if (error) {
+      console.warn(`[Sync Engine] Error descargando ${table}:`, error.message);
+      return;
+    }
 
     if (serverData && serverData.length > 0) {
       for (const record of serverData) {
@@ -116,7 +119,7 @@ export async function pullFromServer() {
               record.photo_blob = await response.blob();
             }
           } catch (imgErr) {
-            console.warn(`[Sync Engine] No se descargó la imagen para uso offline: ${record.id}`);
+            // Ignorar silenciosamente, la imagen se intentará cargar por URL luego
           }
         }
         await db.table(table).put(record);
@@ -128,7 +131,6 @@ export async function pullFromServer() {
 
 /**
  * 3. MASTER SYNC: El Orquestador. 
- * @returns {Promise<void>}
  */
 export async function runFullSync() {
   const store = useSyncStore.getState();
@@ -143,28 +145,30 @@ export async function runFullSync() {
   isSyncing = true;
   store.setSyncStatus('SYNCING');
 
-  let pushFailed = false;
-  let pullFailed = false;
+  let hasErrors = false;
 
   try {
-    await processSyncQueue(); 
+    await processSyncQueue();
   } catch (err) {
-    console.error('[Sync Engine] Fallo crítico durante el PUSH', err);
-    pushFailed = true;
+    hasErrors = true;
   }
 
   try {
     await pullFromServer();
   } catch (err) {
-    console.error('[Sync Engine] Fallo crítico durante el PULL', err);
-    pullFailed = true;
+    hasErrors = true;
   }
 
   try {
     const errorCount = await db.sync_queue.where('status').equals('ERROR').count();
-    
-    if (errorCount > 0 || pushFailed || pullFailed) {
+    const pendingCount = await db.sync_queue.where('status').equals('PENDING').count();
+
+    // Si quedaron items PENDING (porque pausamos por JWT expirado), no lo marcamos como error,
+    // simplemente lo volvemos IDLE para que el usuario no vea advertencias rojas innecesarias.
+    if (errorCount > 0 || hasErrors) {
       store.setSyncStatus('ERROR');
+    } else if (pendingCount > 0) {
+      store.setSyncStatus('IDLE');
     } else {
       store.setSyncStatus('UP_TO_DATE');
       setTimeout(() => {
@@ -174,16 +178,12 @@ export async function runFullSync() {
       }, 3000);
     }
   } finally {
-    isSyncing = false; 
+    isSyncing = false;
   }
 }
 
 /**
  * Helper para agregar a la cola
- * @param {'animals' | 'growth_events' | 'services' | 'pregnancy_checks' | 'health_records'} table_name
- * @param {'INSERT' | 'UPDATE' | 'DELETE'} operation
- * @param {any} payload
- * @returns {Promise<void>}
  */
 export async function addToSyncQueue(table_name, operation, payload) {
   await db.sync_queue.add({
@@ -197,6 +197,6 @@ export async function addToSyncQueue(table_name, operation, payload) {
   if (navigator.onLine) {
     setTimeout(() => {
       runFullSync();
-    }, 500); 
+    }, 500);
   }
 }
