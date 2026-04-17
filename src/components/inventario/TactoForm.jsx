@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import {
@@ -118,9 +117,12 @@ export default function TactoForm({
       });
 
       setShowToast(true);
-      await new Promise(r => setTimeout(r, 1500));
-      setShowToast(false);
-      onSubmitSuccess();
+      
+      // --- CAMBIO UX: Cerrar rápido en 500ms ---
+      setTimeout(() => {
+        setShowToast(false);
+        onSubmitSuccess();
+      }, 500);
 
     } catch (err) {
       console.error('Error guardando tacto:', err);

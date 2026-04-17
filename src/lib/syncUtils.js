@@ -11,9 +11,10 @@ let isSyncing = false;
  * @returns {Promise<void>}
  */
 export async function processSyncQueue() {
+  // CORRECCIÓN CRÍTICA: Buscar tanto PENDING como ERROR para no dejar datos estancados
   const pendingItems = await db.sync_queue
     .where('status')
-    .equals('PENDING')
+    .anyOf(['PENDING', 'ERROR'])
     .sortBy('created_at');
 
   if (pendingItems.length === 0) return;
@@ -62,15 +63,17 @@ export async function processSyncQueue() {
       // Éxito: Eliminar de la cola local
       await db.sync_queue.delete(item.id);
       
-      const currentCount = await db.sync_queue.where('status').equals('PENDING').count();
+      const currentCount = await db.sync_queue.where('status').anyOf(['PENDING', 'ERROR']).count();
       store.setPendingItemsCount(currentCount);
 
     } catch (err) {
       console.error(`[Sync Engine] Error subiendo item ${item.id}:`, err);
       
+      // CORRECCIÓN CRÍTICA: Si falla, lo devolvemos a PENDING en lugar de ERROR permanente 
+      // para que el próximo ciclo lo vuelva a intentar sin "asustar" a la UI para siempre
       await db.sync_queue.update(item.id, { 
-        status: 'ERROR', 
-        error_message: err.message || 'Error desconocido' 
+        status: 'PENDING', 
+        error_message: err.message || 'Error desconocido, se reintentará' 
       });
       
       continue; 
