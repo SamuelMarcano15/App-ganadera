@@ -101,5 +101,5 @@ export async function uploadImageToSupabase(
     .from(bucketName)
     .getPublicUrl(fullFileName);
 
-  return publicUrlData.publicUrl;
+  return `${publicUrlData.publicUrl}?t=${Date.now()}`;
 }

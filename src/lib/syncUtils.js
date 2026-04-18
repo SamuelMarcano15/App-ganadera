@@ -5,6 +5,17 @@ import { uploadImageToSupabase } from './imageUtils';
 
 let isSyncing = false;
 
+// Helper para timeout en promesas
+const withTimeout = (promise, ms = 8000) => {
+  const timeout = new Promise((_, reject) => {
+    const id = setTimeout(() => {
+      clearTimeout(id);
+      reject(new Error('TIMEOUT_EXCEEDED'));
+    }, ms);
+  });
+  return Promise.race([promise, timeout]);
+};
+
 /**
  * 1. PUSH: De local a la Nube.
  */
@@ -82,11 +93,18 @@ export async function processSyncQueue() {
  * 2. PULL: De Nube a Local
  */
 export async function pullFromServer() {
-  // FASE 4: Validar sesión de forma segura y silenciosa
-  const { data: { session }, error: authError } = await supabase.auth.getSession();
+  // FASE 4: Validar sesión de forma segura y silenciosa (con Timeout)
+  let session;
+  try {
+    const { data } = await withTimeout(supabase.auth.getSession(), 6000);
+    session = data?.session;
+  } catch (err) {
+    console.warn('[Sync Engine] PULL abortado por timeout o error de sesión:', err.message);
+    return;
+  }
 
-  // Si no hay sesión válida o hubo un error de auth, abortamos en silencio
-  if (authError || !session?.user) {
+  // Si no hay sesión válida
+  if (!session?.user) {
     console.warn('[Sync Engine] PULL abortado: No hay sesión activa en el servidor.');
     return;
   }
