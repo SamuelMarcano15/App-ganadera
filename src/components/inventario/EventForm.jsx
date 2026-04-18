@@ -160,20 +160,9 @@ export default function EventForm({
     return tipoEvento;
   };
 
-  // --- OBTENER USUARIO ---
-  const getSafeUserId = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user?.id) return session.user.id;
-
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      const isOfflineAuthorized = localStorage.getItem("ganadera_offline_session") === "true";
-      if (isOfflineAuthorized) {
-        if (animal?.user_id) return animal.user_id;
-        const anyAnimal = await db.animals.toCollection().first();
-        return anyAnimal?.user_id || "offline-user";
-      }
-    }
-    return null; 
+  // --- LÓGICA LOCAL-FIRST (Zero Delay) ---
+  const getLocalUserId = () => {
+    return localStorage.getItem("ganadera_user_id");
   };
 
   const onSubmit = async (data) => {
@@ -181,7 +170,7 @@ export default function EventForm({
     setIsSaving(true);
 
     try {
-      const userId = await getSafeUserId();
+      const userId = getLocalUserId();
       
       if (!userId) {
         window.location.href = '/login';
