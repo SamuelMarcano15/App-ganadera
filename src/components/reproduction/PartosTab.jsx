@@ -2,6 +2,7 @@ import React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
 import { GiCow } from 'react-icons/gi';
+import { formatDateLocal } from '@/lib/dateUtils';
 
 export default function PartosTab({ animalId }) {
   const offspring = useLiveQuery(
@@ -9,7 +10,7 @@ export default function PartosTab({ animalId }) {
       .where('mother_id').equals(animalId)
       .and(a => !a.deleted_at)
       .toArray()
-      .then(res => res.sort((a, b) => new Date(b.birth_date) - new Date(a.birth_date))),
+      .then(res => res.sort((a, b) => (b.birth_date || '').localeCompare(a.birth_date || ''))),
     [animalId]
   );
 
@@ -19,7 +20,7 @@ export default function PartosTab({ animalId }) {
         offspring.map((calf) => (
           <div key={calf.id} className="bg-white p-5 rounded-2xl border border-neutral-200">
             <span className="text-xs uppercase tracking-widest text-[#1B4820] font-bold">
-              {calf.birth_date ? new Date(calf.birth_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Fecha desconocida'}
+              {formatDateLocal(calf.birth_date)}
             </span>
             <h3 className="font-bold text-gray-800 text-lg mt-1">Nacimiento de Cría #{calf.number}</h3>
             <p className="text-sm text-gray-500 mt-2">

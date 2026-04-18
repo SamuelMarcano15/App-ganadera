@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Search, SlidersHorizontal, Scale, Plus, X, Syringe, ClipboardPlus, CheckCircle2, XCircle, Check } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
-import { calculateAge, formatWeight } from '@/lib/dateUtils';
+import { calculateAge, formatWeight, parseLocalDate } from '@/lib/dateUtils';
 import SyncStatus from '@/components/ui/SyncStatus';
 import AnimalImage from '@/components/inventario/AnimalImage';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -111,7 +111,8 @@ export default function InventarioPage() {
 
       let category = 'Desconocida';
       if (a.birth_date) {
-        const months = (new Date() - new Date(a.birth_date)) / (1000 * 60 * 60 * 24 * 30.44);
+        const birth = parseLocalDate(a.birth_date);
+        const months = (new Date() - birth) / (1000 * 60 * 60 * 24 * 30.44);
         if (months < 12) category = 'Becerro';
         else if (months < 24) category = 'Maute';
         else if (months < 36) category = 'Novillo';
@@ -143,7 +144,8 @@ export default function InventarioPage() {
       if (type === 'category') {
         let cat = 'Desconocida';
         if (a.birth_date) {
-          const months = (new Date() - new Date(a.birth_date)) / (1000 * 60 * 60 * 24 * 30.44);
+          const birth = parseLocalDate(a.birth_date);
+          const months = (new Date() - birth) / (1000 * 60 * 60 * 24 * 30.44);
           if (months < 12) cat = 'Becerro';
           else if (months < 24) cat = 'Maute';
           else if (months < 36) cat = 'Novillo';

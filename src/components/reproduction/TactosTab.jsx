@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Plus, Stethoscope } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
+import { formatDateLocal } from '@/lib/dateUtils';
 import BottomSheet from '@/components/ui/BottomSheet';
 import TactoForm from '@/components/inventario/TactoForm';
 
@@ -15,7 +16,7 @@ export default function TactosTab({ animal }) {
       .where('animal_id').equals(animalId)
       .and(c => !c.deleted_at)
       .toArray()
-      .then(res => res.sort((a, b) => new Date(b.check_date) - new Date(a.check_date))),
+      .then(res => res.sort((a, b) => b.check_date.localeCompare(a.check_date))),
     [animalId]
   );
 
@@ -32,7 +33,7 @@ export default function TactosTab({ animal }) {
           >
             <div className="flex justify-between items-start mb-2">
               <span className="text-xs uppercase tracking-widest text-[#1B4820] font-bold">
-                {new Date(check.check_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
+                {formatDateLocal(check.check_date)}
               </span>
               <div className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-widest ${
                 check.result === 'Preñada' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'
@@ -66,7 +67,7 @@ export default function TactosTab({ animal }) {
         isOpen={!!editingCheck}
         onClose={() => setEditingCheck(null)}
         title="Editar Tacto"
-        description={editingCheck ? `Modificar diagnóstico del ${new Date(editingCheck.check_date).toLocaleDateString('es-ES')}` : ''}
+        description={editingCheck ? `Modificar diagnóstico del ${formatDateLocal(editingCheck.check_date)}` : ''}
       >
         <div className="pb-8">
           <TactoForm

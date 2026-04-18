@@ -52,16 +52,16 @@ export default function SyncStatus() {
     statusColor = 'text-blue-500';
     bgColor = 'bg-blue-50';
     isRotating = true;
-  } else if (syncStatus === 'ERROR') {
-    StatusIcon = AlertCircle;
-    statusText = 'Error de Sinc. ❌';
-    statusColor = 'text-red-600';
-    bgColor = 'bg-red-50';
   } else if (pendingItemsCount > 0) {
     StatusIcon = AlertCircle;
     statusText = `Pendiente (${pendingItemsCount}) 🟡`;
     statusColor = 'text-amber-500';
     bgColor = 'bg-amber-50';
+  } else if (syncStatus === 'ERROR') {
+    StatusIcon = AlertCircle;
+    statusText = 'Red Inestable ⚠️';
+    statusColor = 'text-orange-500';
+    bgColor = 'bg-orange-50';
   } else {
     StatusIcon = CheckCircle2;
     statusText = 'Respaldado 🟢';

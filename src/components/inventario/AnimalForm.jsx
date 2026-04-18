@@ -11,6 +11,7 @@ import { compressImage } from '@/lib/imageUtils';
 import GenealogySelector from './GenealogySelector';
 import CustomSelect from '@/components/ui/CustomSelect';
 import { useNavigate } from 'react-router-dom';
+import { formatShortDateLocal } from '@/lib/dateUtils';
 
 // Esquema de validación con Zod
 const animalSchema = z.object({
@@ -66,7 +67,7 @@ const ImageUploader = ({ preview, onCapture, onRemove, label, id }) => {
           <span className="text-[11px] font-black uppercase tracking-widest text-neutral-500">{label}</span>
         </>
       )}
-      <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onCapture} />
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={onCapture} />
     </div>
   );
 };
@@ -106,13 +107,19 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
   const fatherId = watch('father_id');
   const motherId = watch('mother_id');
 
-  // --- CARGA DE DATOS AL EDITAR ---
+  // --- CARGA DE DATOS AL EDITAR (FASE 3 & MEMORIA) ---
   useEffect(() => {
     const loadExistingEvents = async () => {
       if (!initialValues?.id) return;
       const events = await db.growth_events.where('animal_id').equals(initialValues.id).toArray();
       const birth = events.find(e => e.event_type === 'Nacimiento');
       const weaning = events.find(e => e.event_type === 'Destete');
+
+      // Imagen Principal
+      if (initialValues.photo_blob) {
+        const url = URL.createObjectURL(initialValues.photo_blob);
+        setImages(prev => ({ ...prev, main: { blob: null, preview: url } }));
+      }
 
       if (birth) {
         setEventIds(prev => ({ ...prev, birth: birth.id }));
@@ -121,7 +128,13 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
         setValue('mother_weight_at_birth', birth.mother_weight_kg);
         setValue('navel_length', birth.navel_length);
         setValue('birth_observations', birth.observations);
-        setImages(prev => ({ ...prev, birth: { blob: null, preview: birth.photo_path } }));
+        
+        // Priorizar BLOB local para previsualización en edición
+        let birthPreview = birth.photo_path;
+        if (birth.photo_blob) {
+          birthPreview = URL.createObjectURL(birth.photo_blob);
+        }
+        setImages(prev => ({ ...prev, birth: { blob: null, preview: birthPreview } }));
       }
 
       if (weaning) {
@@ -131,10 +144,26 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
         setValue('mother_weight_at_weaning', weaning.mother_weight_kg);
         setValue('sc_at_weaning', weaning.scrotal_circumference_cm);
         setValue('weaning_observations', weaning.observations);
-        setImages(prev => ({ ...prev, weaning: { blob: null, preview: weaning.photo_path } }));
+
+        // Priorizar BLOB local
+        let weaningPreview = weaning.photo_path;
+        if (weaning.photo_blob) {
+          weaningPreview = URL.createObjectURL(weaning.photo_blob);
+        }
+        setImages(prev => ({ ...prev, weaning: { blob: null, preview: weaningPreview } }));
       }
     };
     loadExistingEvents();
+
+    // Limpieza de memoria: Revocamos los ObjectURLs al desmontar
+    return () => {
+      setImages(prev => {
+        if (prev.main.preview?.startsWith('blob:')) URL.revokeObjectURL(prev.main.preview);
+        if (prev.birth.preview?.startsWith('blob:')) URL.revokeObjectURL(prev.birth.preview);
+        if (prev.weaning.preview?.startsWith('blob:')) URL.revokeObjectURL(prev.weaning.preview);
+        return prev;
+      });
+    };
   }, [initialValues, setValue]);
 
   const motherServices = useLiveQuery(
@@ -180,7 +209,7 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
       }
       return {
         value: s.id,
-        label: `${new Date(s.service_date).toLocaleDateString()} - ${s.type_conception}${toroInfo}`
+        label: `${formatShortDateLocal(s.service_date)} - ${s.type_conception}${toroInfo}`
       };
     });
   }, [motherServices]);

@@ -4,6 +4,7 @@ import { Plus, Syringe } from 'lucide-react';
 import { FaVenusMars } from 'react-icons/fa6';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
+import { formatDateLocal } from '@/lib/dateUtils';
 import BottomSheet from '@/components/ui/BottomSheet';
 import ServicioForm from '@/components/inventario/ServicioForm';
 
@@ -17,7 +18,7 @@ export default function ServiciosTab({ animal }) {
       const svcs = await db.services
         .where('mother_id').equals(animalId)
         .toArray()
-        .then(res => res.sort((a, b) => new Date(b.service_date) - new Date(a.service_date)));
+        .then(res => res.sort((a, b) => b.service_date.localeCompare(a.service_date)));
       
       const filteredSvcs = svcs.filter(s => !s.deleted_at);
 
@@ -47,7 +48,7 @@ export default function ServiciosTab({ animal }) {
             className="bg-white p-5 rounded-2xl border border-neutral-200 cursor-pointer active:scale-[0.98] transition-all hover:border-[#1A3621]/30 shadow-sm"
           >
             <span className="text-xs uppercase tracking-widest text-[#1B4820] font-bold">
-              {new Date(service.service_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
+              {formatDateLocal(service.service_date)}
             </span>
             <h3 className="font-bold text-gray-800 text-lg mt-1">
               {service.type_conception === 'IA' ? 'Inseminación Artificial' : 
@@ -83,7 +84,7 @@ export default function ServiciosTab({ animal }) {
         isOpen={!!editingService}
         onClose={() => setEditingService(null)}
         title="Editar Servicio"
-        description={editingService ? `Modificar servicio del ${new Date(editingService.service_date).toLocaleDateString('es-ES')}` : ''}
+        description={editingService ? `Modificar servicio del ${formatDateLocal(editingService.service_date)}` : ''}
       >
         <div className="pb-8">
           <ServicioForm
