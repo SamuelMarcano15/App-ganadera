@@ -47,7 +47,7 @@ const ImageUploader = ({ preview, onCapture, onRemove, label, id }) => {
   const inputRef = useRef(null);
   return (
     <div
-      onClick={() => !preview && inputRef.current?.click()}
+      onClick={() => inputRef.current?.click()}
       className={`relative border-2 border-dashed border-neutral-300 rounded-2xl flex flex-col items-center justify-center text-neutral-400 bg-white/50 hover:bg-white cursor-pointer transition-all group overflow-hidden shadow-inner ${preview ? 'h-48' : 'h-32'}`}
     >
       {preview ? (
@@ -78,9 +78,9 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
   const [eventIds, setEventIds] = useState({ birth: null, weaning: null });
 
   const [images, setImages] = useState({
-    main: { blob: null, preview: initialValues?.photo_path || null },
-    birth: { blob: null, preview: null },
-    weaning: { blob: null, preview: null }
+    main: { blob: null, preview: initialValues?.photo_path || null, isModified: false },
+    birth: { blob: null, preview: null, isModified: false },
+    weaning: { blob: null, preview: null, isModified: false }
   });
 
   const [toast, setToast] = useState({ show: false, type: 'success', message: '' });
@@ -118,7 +118,7 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
       // Imagen Principal
       if (initialValues.photo_blob) {
         const url = URL.createObjectURL(initialValues.photo_blob);
-        setImages(prev => ({ ...prev, main: { blob: null, preview: url } }));
+        setImages(prev => ({ ...prev, main: { ...prev.main, preview: url } }));
       }
 
       if (birth) {
@@ -134,7 +134,7 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
         if (birth.photo_blob) {
           birthPreview = URL.createObjectURL(birth.photo_blob);
         }
-        setImages(prev => ({ ...prev, birth: { blob: null, preview: birthPreview } }));
+        setImages(prev => ({ ...prev, birth: { ...prev.birth, preview: birthPreview } }));
       }
 
       if (weaning) {
@@ -150,7 +150,7 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
         if (weaning.photo_blob) {
           weaningPreview = URL.createObjectURL(weaning.photo_blob);
         }
-        setImages(prev => ({ ...prev, weaning: { blob: null, preview: weaningPreview } }));
+        setImages(prev => ({ ...prev, weaning: { ...prev.weaning, preview: weaningPreview } }));
       }
     };
     loadExistingEvents();
@@ -225,7 +225,10 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
     try {
       const compressedBlob = await compressImage(file);
       const previewUrl = URL.createObjectURL(compressedBlob);
-      setImages(prev => ({ ...prev, [type]: { blob: compressedBlob, preview: previewUrl } }));
+      setImages(prev => ({ 
+        ...prev, 
+        [type]: { blob: compressedBlob, preview: previewUrl, isModified: true } 
+      }));
     } catch (error) {
       console.error('Error procesando imagen:', error);
       alert('Error al comprimir la foto.');
@@ -233,7 +236,7 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
   };
 
   const removeImage = (type) => {
-    setImages(prev => ({ ...prev, [type]: { blob: null, preview: null } }));
+    setImages(prev => ({ ...prev, [type]: { blob: null, preview: null, isModified: true } }));
   };
 
   // --- LÓGICA LOCAL-FIRST (Fase 2) ---
@@ -303,19 +306,21 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
       const animalId = initialValues?.id || crypto.randomUUID();
       const now = new Date().toISOString();
 
+      // Si ha sido modificado, el photo_path debe ser null para que el proceso de sincronización 
+      // lo detecte como algo nuevo que debe subir (o para eliminarlo si es null).
       const mainImg = {
         blob: images.main.blob || null,
-        url: isEditing ? initialValues?.photo_path : null
+        url: images.main.isModified ? null : (isEditing ? initialValues?.photo_path : null)
       };
 
       const birthImg = {
         blob: images.birth.blob || null,
-        url: images.birth.preview && typeof images.birth.preview === 'string' && !images.birth.preview.startsWith('blob:') ? images.birth.preview : null
+        url: images.birth.isModified ? null : (images.birth.preview && typeof images.birth.preview === 'string' && !images.birth.preview.startsWith('blob:') ? images.birth.preview : null)
       };
 
       const weaningImg = {
         blob: images.weaning.blob || null,
-        url: images.weaning.preview && typeof images.weaning.preview === 'string' && !images.weaning.preview.startsWith('blob:') ? images.weaning.preview : null
+        url: images.weaning.isModified ? null : (images.weaning.preview && typeof images.weaning.preview === 'string' && !images.weaning.preview.startsWith('blob:') ? images.weaning.preview : null)
       };
 
       await db.transaction('rw', [db.animals, db.growth_events, db.sync_queue], async () => {

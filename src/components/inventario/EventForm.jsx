@@ -11,7 +11,8 @@ import {
   MessageSquare,
   AlertTriangle,
   Loader2,
-  Info
+  Info,
+  Trash2
 } from "lucide-react";
 
 // Importaciones Core
@@ -71,6 +72,7 @@ export default function EventForm({
     return null;
   });
   const [photoBlob, setPhotoBlob] = useState(null);
+  const [isPhotoModified, setIsPhotoModified] = useState(false);
   const fileInputRef = useRef(null);
 
   // --- FORMULARIO ---
@@ -141,9 +143,16 @@ export default function EventForm({
       const compressed = await compressImage(file);
       setPhotoBlob(compressed);
       setPhotoPreview(URL.createObjectURL(compressed));
+      setIsPhotoModified(true);
     } catch (err) {
       console.error('Error procesando imagen:', err);
     }
+  };
+
+  const removePhoto = () => {
+    setPhotoBlob(null);
+    setPhotoPreview(null);
+    setIsPhotoModified(true);
   };
 
   const getDisplayTitleExternal = () => {
@@ -193,8 +202,8 @@ export default function EventForm({
         scrotal_circumference_cm: data.circunferencia ? parseFloat(data.circunferencia) : null,
         navel_length: data.largoViril || null,
         observations: data.observations || null,
-        photo_path: isEditing ? initialValues.photo_path : null, // Dejamos que SyncManager la llene luego
-        photo_blob: photoBlob || (isEditing ? initialValues.photo_blob : null),
+        photo_path: isPhotoModified ? null : (isEditing ? initialValues.photo_path : null),
+        photo_blob: photoBlob || (isEditing && !isPhotoModified ? initialValues.photo_blob : null),
         created_at: isEditing ? initialValues.created_at : now,
         updated_at: now,
       };
@@ -413,7 +422,16 @@ export default function EventForm({
         className="relative h-48 border-4 border-dashed border-gray-200 rounded-[3rem] flex flex-col items-center justify-center bg-white cursor-pointer active:scale-95 transition-all hover:border-emerald-200 hover:bg-emerald-50/10 overflow-hidden"
       >
         {photoPreview ? (
-          <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+          <>
+            <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); removePhoto(); }}
+              className="absolute top-4 right-4 bg-red-500 text-white p-2.5 rounded-full shadow-lg hover:bg-red-600 active:scale-90 transition-all z-10 cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </>
         ) : (
           <div className="flex flex-col items-center">
             <div className="bg-emerald-50 rounded-full p-5 mb-4 group-hover:bg-emerald-100 transition-colors">
