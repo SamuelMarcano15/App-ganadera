@@ -423,7 +423,7 @@ export default function EventForm({
             <span className="text-[9px] text-gray-400 mt-1 font-bold">Opcional para el registro</span>
           </div>
         )}
-        <input type="file" accept="image/*" capture="environment" ref={fileInputRef} onChange={handlePhotoUpload} className="hidden" />
+        <input type="file" accept="image/*" ref={fileInputRef} onChange={handlePhotoUpload} className="hidden" />
       </div>
 
       {/* Footer */}

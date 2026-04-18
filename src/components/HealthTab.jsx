@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
-import { formatWeight } from '@/lib/dateUtils';
+import { formatWeight, formatShortDateLocal } from '@/lib/dateUtils';
 import AnimalImage from '@/components/inventario/AnimalImage';
 import BottomSheet from '@/components/ui/BottomSheet';
 import HealthForm from '@/components/inventario/HealthForm';
@@ -34,7 +34,7 @@ export default function HealthTab({ animal }) {
       .where('animal_id').equals(animalId)
       .and(r => !r.deleted_at)
       .toArray()
-      .then(res => res.sort((a, b) => new Date(b.application_date) - new Date(a.application_date))),
+      .then(res => res.sort((a, b) => b.application_date.localeCompare(a.application_date))),
     [animalId]
   );
 
@@ -98,7 +98,7 @@ export default function HealthTab({ animal }) {
                 <div className="flex-1 space-y-3">
                   <div className="flex justify-between items-start">
                     <p className="text-[11px] font-bold text-neutral-900 tracking-tight">
-                      {new Date(item.application_date).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                      {formatShortDateLocal(item.application_date)}
                     </p>
                     <span className="text-[8px] font-black text-neutral-300 uppercase tracking-widest">Fecha</span>
                   </div>

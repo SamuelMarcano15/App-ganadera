@@ -2,6 +2,37 @@ import { differenceInMonths, differenceInYears, formatDistanceToNowStrict } from
 import { es } from 'date-fns/locale';
 
 /**
+ * Parsea una fecha string (YYYY-MM-DD) asegurando que se trate como mediodía local
+ * para evitar que el desfase de zona horaria (Timezone Shift) cambie el día.
+ */
+export function parseLocalDate(dateString) {
+  if (!dateString) return null;
+  // Si ya viene con T, asumimos que es ISO completo, si no, le agregamos mediodía
+  const isoString = dateString.includes('T') ? dateString : `${dateString}T12:00:00`;
+  return new Date(isoString);
+}
+
+/**
+ * Formatea una fecha string de forma legible en español (ej: "18 de abril de 2026").
+ */
+export function formatDateLocal(dateString) {
+  if (!dateString) return '---';
+  const date = parseLocalDate(dateString);
+  if (isNaN(date)) return '---';
+  return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+/**
+ * Formatea una fecha string de forma corta (ej: "18/04/2026").
+ */
+export function formatShortDateLocal(dateString) {
+  if (!dateString) return '---';
+  const date = parseLocalDate(dateString);
+  if (isNaN(date)) return '---';
+  return date.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+/**
  * Calcula la edad de un animal de forma legible.
  * @param {string | Date} birthDate - Fecha de nacimiento.
  * @returns {string} - Edad formateada (ej: "2 años 3 meses", "1 mes", "15 días").
@@ -9,7 +40,7 @@ import { es } from 'date-fns/locale';
 export function calculateAge(birthDate) {
   if (!birthDate) return 'Desconocida';
 
-  const birth = new Date(birthDate);
+  const birth = parseLocalDate(birthDate.toString());
   const now = new Date();
 
   if (birth > now) return 'Fecha futura';

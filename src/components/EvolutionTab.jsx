@@ -10,7 +10,7 @@ import {
 import { Link } from 'react-router-dom';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
-import { formatWeight } from '@/lib/dateUtils';
+import { formatWeight, formatDateLocal } from '@/lib/dateUtils';
 import AnimalImage from '@/components/inventario/AnimalImage';
 import BottomSheet from '@/components/ui/BottomSheet';
 import EventForm from '@/components/inventario/EventForm';
@@ -25,7 +25,7 @@ export default function EvolutionTab({ animal }) {
       .where('animal_id').equals(animalId)
       .and(e => !e.deleted_at)
       .toArray()
-      .then(res => res.sort((a, b) => new Date(b.event_date) - new Date(a.event_date))),
+      .then(res => res.sort((a, b) => b.event_date.localeCompare(a.event_date))),
     [animalId]
   );
 
@@ -66,7 +66,7 @@ export default function EvolutionTab({ animal }) {
                     className="w-full h-full transition-transform duration-500 group-hover:scale-105"
                   />
                   <div className="absolute top-3 right-3 bg-black/40 backdrop-blur-md text-white px-2.5 py-1 rounded-full text-[9px] font-bold uppercase">
-                    {new Date(event.event_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {formatDateLocal(event.event_date)}
                   </div>
                 </div>
 
