@@ -67,8 +67,9 @@ export default function EventForm({
   const [isLargoOpen, setIsLargoOpen] = useState(false);
 
   const [photoPreview, setPhotoPreview] = useState(() => {
-    if (initialValues?.photo_path) return initialValues.photo_path;
+    // FASE 2: Prioridad absoluta al binario local para modo Offline
     if (initialValues?.photo_blob) return URL.createObjectURL(initialValues.photo_blob);
+    if (initialValues?.photo_path) return initialValues.photo_path;
     return null;
   });
   const [photoBlob, setPhotoBlob] = useState(null);
@@ -88,6 +89,17 @@ export default function EventForm({
   });
 
   const selectedLargo = watch("largoViril");
+
+  // --- SINCRONIZACIÓN DE FOTO (MODO EDICIÓN) ---
+  useEffect(() => {
+    if (isEditing && initialValues) {
+      if (initialValues.photo_blob) {
+        setPhotoPreview(URL.createObjectURL(initialValues.photo_blob));
+      } else if (initialValues.photo_path) {
+        setPhotoPreview(initialValues.photo_path);
+      }
+    }
+  }, [initialValues, isEditing]);
 
   // --- LÓGICA DE DUPLICADOS ---
   const isDuplicateBlocked = useMemo(() => {
