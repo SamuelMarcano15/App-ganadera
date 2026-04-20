@@ -61,7 +61,7 @@ function TactoContent() {
         </div>
 
         <span className="font-display text-[2.5rem] sm:text-5xl leading-[1.05] font-extrabold text-[#1A3621] mb-3 block">
-          Registrar<br className="sm:hidden" /> Tacto
+          Registrar<br className="sm:hidden" /> Palpación
         </span>
 
         <p className="font-sans text-base font-medium text-gray-500 leading-relaxed max-w-[500px] sm:max-w-2xl mt-4">

@@ -13,7 +13,7 @@ export default function ReproductionTab({ animal }) {
 
   const subTabs = [
     { id: 'partos', label: 'Partos', icon: GiCow }, // <-- CAMBIADO: Vaca representando a la madre
-    { id: 'tactos', label: 'Tactos', icon: Stethoscope }, // Se mantiene igual
+    { id: 'tactos', label: 'Palpaciones', icon: Stethoscope }, // Se mantiene igual
     { id: 'servicios', label: 'Servicios', icon: FaVenusMars }, // <-- CAMBIADO: Símbolos de cruce/reproducción
   ];
 

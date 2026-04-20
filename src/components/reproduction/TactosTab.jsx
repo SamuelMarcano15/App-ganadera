@@ -50,7 +50,7 @@ export default function TactosTab({ animal }) {
       ) : (
         <div className="bg-white/50 p-10 rounded-2xl border border-dashed border-neutral-300 text-center">
           <Stethoscope className="w-10 h-10 text-neutral-300 mx-auto mb-2" />
-          <p className="text-sm text-neutral-400 font-bold uppercase tracking-widest">Sin tactos registrados</p>
+          <p className="text-sm text-neutral-400 font-bold uppercase tracking-widest">Sin palpaciones registradas</p>
         </div>
       )}
 
@@ -66,7 +66,7 @@ export default function TactosTab({ animal }) {
       <BottomSheet
         isOpen={!!editingCheck}
         onClose={() => setEditingCheck(null)}
-        title="Editar Tacto"
+        title="Editar Palpaciones"
         description={editingCheck ? `Modificar diagnóstico del ${formatDateLocal(editingCheck.check_date)}` : ''}
       >
         <div className="pb-8">
