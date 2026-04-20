@@ -22,6 +22,7 @@ import { addToSyncQueue } from "@/lib/syncUtils";
 import { compressImage } from "@/lib/imageUtils"; // <-- Eliminamos uploadImageToSupabase
 import AnimalImage from "@/components/inventario/AnimalImage";
 import BottomSheet from "@/components/ui/BottomSheet";
+import { DateInput } from '@/components/ui/DateInput';
 
 export default function EventForm({ 
   animal, 
@@ -356,7 +357,7 @@ export default function EventForm({
           <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3 ml-1">Fecha del Evento</label>
           <div className="flex items-center gap-4 bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100">
             <Calendar size={22} className="text-[#1A3621] opacity-70" />
-            <input type="date" placeholder="dd/mm/aaaa" className="font-black text-gray-800 text-lg outline-none w-full bg-transparent" {...register("fechaEvento")} />
+            <DateInput className="font-black text-gray-800 text-lg outline-none w-full bg-transparent" {...register("fechaEvento")} />
           </div>
         </div>
 
