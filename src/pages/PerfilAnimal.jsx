@@ -120,11 +120,11 @@ function ProfileContent() {
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`flex flex-col items-center gap-1 transition-colors cursor-pointer ${activeTab === item.id ? 'text-[#1B4820]' : 'text-neutral-400'
+              className={`flex flex-col items-center gap-1 flex-1 transition-colors cursor-pointer ${activeTab === item.id ? 'text-[#1B4820]' : 'text-neutral-400'
                 }`}
             >
               <item.icon className="w-5 h-5 flex-shrink-0" />
-              <span className="text-[9px] font-bold uppercase tracking-widest">{item.label}</span>
+              <span className="text-[8px] font-bold uppercase tracking-wider text-center whitespace-nowrap">{item.label}</span>
             </button>
           ))}
         </div>

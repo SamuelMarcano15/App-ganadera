@@ -146,6 +146,7 @@ export default function TactoForm({
            <Calendar size={20} className="text-[#1A3621] opacity-40" />
            <input
             type="date"
+            placeholder="dd/mm/aaaa"
             className="font-black text-gray-800 text-lg outline-none w-full bg-transparent"
             {...register("fechaTacto", { required: true })}
           />

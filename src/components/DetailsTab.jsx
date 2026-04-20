@@ -16,6 +16,14 @@ export default function DetailsTab({ animal, onEdit }) {
     },
     [animal]
   );
+
+  const originService = useLiveQuery(
+    () => animal?.origin_service_id
+      ? db.services.get(animal.origin_service_id)
+      : null,
+    [animal]
+  );
+
   if (!animal) return null;
 
   return (
@@ -76,6 +84,12 @@ export default function DetailsTab({ animal, onEdit }) {
             <DataRow label="Fecha Nacimiento" value={formatDateLocal(animal.birth_date)} />
             <DataRow label="Sexo" value={animal.sex || '---'} />
             <DataRow label="Color / Pelaje" value={animal.color || '---'} />
+            {originService && (
+              <DataRow 
+                label="Servicio de Origen" 
+                value={originService.type_conception || '---'} 
+              />
+            )}
             <DataRow label="Estado Actual" value={animal.status || 'Activo'} isStatus={true} statusType={animal.status} />
           </div>
         </section>

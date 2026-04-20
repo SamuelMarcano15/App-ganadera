@@ -160,6 +160,7 @@ export default function ServicioForm({
         <div className={`bg-white rounded-xl p-4 flex items-center justify-between shadow-sm border border-gray-100 border-l-4 ${errors.fechaServicio ? 'border-l-red-400' : 'border-l-[#EAECE4]'}`}>
           <input
             type="date"
+            placeholder="dd/mm/aaaa"
             className="font-bold text-gray-800 text-base outline-none w-full bg-transparent appearance-none"
             {...register("fechaServicio", { required: true })}
           />
