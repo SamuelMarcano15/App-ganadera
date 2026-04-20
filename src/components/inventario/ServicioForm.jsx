@@ -21,6 +21,7 @@ import { addToSyncQueue } from "@/lib/syncUtils";
 import GenealogySelector from "@/components/inventario/GenealogySelector";
 import BottomSheet from "@/components/ui/BottomSheet";
 import AnimalForm from "@/components/inventario/AnimalForm";
+import { DateInput } from '@/components/ui/DateInput';
 
 export default function ServicioForm({
   animal,
@@ -158,9 +159,7 @@ export default function ServicioForm({
           Fecha de Servicio *
         </label>
         <div className={`bg-white rounded-xl p-4 flex items-center justify-between shadow-sm border border-gray-100 border-l-4 ${errors.fechaServicio ? 'border-l-red-400' : 'border-l-[#EAECE4]'}`}>
-          <input
-            type="date"
-            placeholder="dd/mm/aaaa"
+          <DateInput
             className="font-bold text-gray-800 text-base outline-none w-full bg-transparent appearance-none"
             {...register("fechaServicio", { required: true })}
           />

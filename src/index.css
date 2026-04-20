@@ -144,18 +144,3 @@ h6 {
     overflow: hidden;
   }
 }
-
-/* Placeholder visible para inputs de fecha en Mobile */
-input[type="date"]:not(:focus):invalid {
-  color: transparent;
-}
-input[type="date"]::before {
-  content: attr(placeholder);
-  color: #9ca3af; /* gray-400 */
-  pointer-events: none;
-  font-weight: 500;
-}
-input[type="date"]:focus::before,
-input[type="date"]:valid::before {
-  display: none;
-}

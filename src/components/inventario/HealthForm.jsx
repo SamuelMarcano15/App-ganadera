@@ -21,6 +21,7 @@ import { db } from "@/lib/db";
 import { supabase } from "@/lib/supabaseClient";
 import { addToSyncQueue } from "@/lib/syncUtils";
 import BottomSheet from "@/components/ui/BottomSheet";
+import { DateInput } from '@/components/ui/DateInput';
 
 const PRODUCT_TYPE_OPTIONS = [
   { id: 'vacuna', label: 'Vacuna', icon: Syringe, color: 'bg-[#EEF7EE] text-[#1B4820]', activeColor: 'ring-4 ring-[#1B4820]/10 border-[#1B4820]' },
@@ -269,8 +270,7 @@ export default function HealthForm({
           </div>
 
           <div className="relative w-full sm:w-[45%]">
-            <input
-              type="date"
+            <DateInput
               className={`w-full bg-white rounded-full py-4 px-6 font-black text-[#1A3621] text-lg outline-none transition-all shadow-sm border-2
                 ${errors.applicationDate ? "border-red-400" : "border-transparent focus:border-[#1A3621]"}`}
               {...register("applicationDate", { required: true })}

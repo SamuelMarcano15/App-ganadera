@@ -144,9 +144,7 @@ export default function TactoForm({
         <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-1">Fecha de la Palpación *</label>
         <div className={`flex items-center gap-4 bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100 focus-within:border-[#1B4820]`}>
            <Calendar size={20} className="text-[#1A3621] opacity-40" />
-           <input
-            type="date"
-            placeholder="dd/mm/aaaa"
+           <DateInput
             className="font-black text-gray-800 text-lg outline-none w-full bg-transparent"
             {...register("fechaTacto", { required: true })}
           />
