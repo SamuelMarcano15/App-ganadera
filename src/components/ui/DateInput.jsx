@@ -34,6 +34,14 @@ export const DateInput = React.forwardRef(({ onBlur, placeholder = "dd/mm/aaaa",
     if (rest.onChange) rest.onChange(e);
   };
 
+  const handlePointerDown = () => {
+    // Forzamos el cambio de "text" a "date" un instante antes de que el evento táctil
+    // termine para que el OS abra el selector en el primer click (sin doble toque).
+    if (!isFocused && !hasValue) {
+      setIsFocused(true);
+    }
+  };
+
   const type = (hasValue || isFocused) ? "date" : "text";
 
   return (
@@ -42,9 +50,16 @@ export const DateInput = React.forwardRef(({ onBlur, placeholder = "dd/mm/aaaa",
       ref={setRefs}
       placeholder={placeholder}
       className={className}
+      onPointerDown={handlePointerDown}
       onFocus={(e) => {
         setIsFocused(true);
         if (rest.onFocus) rest.onFocus(e);
+        // Respaldo de seguridad: intentar disparar el selector manualmente
+        try {
+          if (e.target.showPicker && e.target.type === 'date') {
+            e.target.showPicker();
+          }
+        } catch (err) {}
       }}
       onBlur={(e) => {
         setIsFocused(false);
