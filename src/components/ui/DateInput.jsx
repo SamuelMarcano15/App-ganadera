@@ -20,13 +20,25 @@ export const DateInput = React.forwardRef(({ onBlur, placeholder = "dd/mm/aaaa",
     }
   };
 
-  // Efecto para detectar si hay valor inicial
+  // Efecto para detectar si hay valor inicial (incluso si react-hook-form lo inyecta una fracción de segundo después)
   useEffect(() => {
-    if (rest.value !== undefined) {
-      setHasValue(!!rest.value);
-    } else if (localRef.current) {
-      setHasValue(!!localRef.current.value);
-    }
+    const checkFormValue = () => {
+      if (rest.value !== undefined) {
+        setHasValue(!!rest.value);
+      } else if (localRef.current) {
+        setHasValue(!!localRef.current.value);
+      }
+    };
+
+    checkFormValue();
+    // React-hook-form a menudo hidrata el valor en los primeros milisegundos tras montar el ref.
+    const t1 = setTimeout(checkFormValue, 20);
+    const t2 = setTimeout(checkFormValue, 100);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, [rest.value]);
 
   const handleChange = (e) => {
