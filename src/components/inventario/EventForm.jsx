@@ -36,6 +36,7 @@ export default function EventForm({
   // --- OPCIONES ---
   const tipoOpciones = ["Destete", "Peso a los 12 meses", "Peso a los 18 meses", "Otro"];
   const largoOpciones = [
+    { value: "", label: "No especificado" },
     { value: "1", label: "Corto (1)" },
     { value: "2", label: "Moderado (2)" },
     { value: "3", label: "Medio (3)" },
@@ -83,7 +84,7 @@ export default function EventForm({
       pesoVaca: initialValues?.mother_weight_kg || "",
       pesoCria: initialValues?.weight_kg || "",
       circunferencia: initialValues?.scrotal_circumference_cm || "",
-      largoViril: initialValues?.navel_length || "1",
+      largoViril: initialValues?.navel_length || "",
       observaciones: initialValues?.observations || "",
     },
   });
@@ -355,7 +356,7 @@ export default function EventForm({
           <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3 ml-1">Fecha del Evento</label>
           <div className="flex items-center gap-4 bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100">
             <Calendar size={22} className="text-[#1A3621] opacity-70" />
-            <input type="date" className="font-black text-gray-800 text-lg outline-none w-full bg-transparent" {...register("fechaEvento")} />
+            <input type="date" placeholder="dd/mm/aaaa" className="font-black text-gray-800 text-lg outline-none w-full bg-transparent" {...register("fechaEvento")} />
           </div>
         </div>
 
@@ -379,7 +380,7 @@ export default function EventForm({
                 setIsTipoOpen(false);
               }}
             >
-              <span className="font-black text-gray-800 text-base">{largoOpciones.find(o => o.value === selectedLargo)?.label || "Corto (1)"}</span>
+              <span className="font-black text-gray-800 text-base">{largoOpciones.find(o => o.value === selectedLargo)?.label || "No especificado"}</span>
               <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isLargoOpen ? "rotate-180" : ""}`} />
             </div>
 
