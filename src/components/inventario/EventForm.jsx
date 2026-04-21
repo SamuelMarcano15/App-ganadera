@@ -18,7 +18,7 @@ import {
 // Importaciones Core
 import { db } from "@/lib/db";
 import { supabase } from "@/lib/supabaseClient";
-import { addToSyncQueue } from "@/lib/syncUtils";
+import { addToSyncQueue, runFullSync } from "@/lib/syncUtils";
 import { compressImage } from "@/lib/imageUtils"; // <-- Eliminamos uploadImageToSupabase
 import AnimalImage from "@/components/inventario/AnimalImage";
 import BottomSheet from "@/components/ui/BottomSheet";
@@ -211,15 +211,35 @@ export default function EventForm({
         updated_at: now,
       };
 
-      await db.transaction('rw', [db.growth_events, db.sync_queue], async () => {
+      await db.transaction('rw', [db.growth_events, db.animals, db.sync_queue], async () => {
+        const syncOps = [];
+
         if (isEditing) {
           await db.growth_events.put(eventData);
-          await addToSyncQueue('growth_events', 'UPDATE', eventData);
+          syncOps.push({ table_name: 'growth_events', operation: 'UPDATE', payload: eventData, created_at: now, status: 'PENDING' });
         } else {
           await db.growth_events.add(eventData);
-          await addToSyncQueue('growth_events', 'INSERT', eventData);
+          syncOps.push({ table_name: 'growth_events', operation: 'INSERT', payload: eventData, created_at: now, status: 'PENDING' });
         }
+
+        // Sincronizar fecha de nacimiento si es un evento de Nacimiento para actualizar la edad en la ficha
+        if (eventData.event_type === 'Nacimiento') {
+          const animalUpdate = {
+            birth_date: eventData.event_date,
+            updated_at: now
+          };
+          await db.animals.update(animal.id, animalUpdate);
+          syncOps.push({ table_name: 'animals', operation: 'UPDATE', payload: { id: animal.id, ...animalUpdate }, created_at: now, status: 'PENDING' });
+        }
+
+        // Guardar operaciones de sincronización en bloque
+        await db.sync_queue.bulkAdd(syncOps);
       });
+
+      // Disparar sincronización fuera de la transacción
+      if (navigator.onLine) {
+        setTimeout(runFullSync, 500);
+      }
 
       setShowToast(true);
       // --- CAMBIO UX: Cerrar rápido en 500ms ---
