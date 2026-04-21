@@ -6,7 +6,7 @@ import { Camera, Save, X, ChevronUp, ChevronDown, Trash2, Plus, CheckCircle, Tri
 import { useLiveQuery } from 'dexie-react-hooks';
 
 import { db } from '@/lib/db';
-import { addToSyncQueue } from '@/lib/syncUtils';
+import { addToSyncQueue, runFullSync } from '@/lib/syncUtils';
 import { compressImage } from '@/lib/imageUtils';
 import GenealogySelector from './GenealogySelector';
 import CustomSelect from '@/components/ui/CustomSelect';
@@ -86,6 +86,11 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
 
   const [toast, setToast] = useState({ show: false, type: 'success', message: '' });
 
+  const existingEventPhotos = useRef({
+    birth: { blob: null, path: null },
+    weaning: { blob: null, path: null }
+  });
+
   const [showQuickService, setShowQuickService] = useState(false);
   const [isSavingQuickService, setIsSavingQuickService] = useState(false);
   const [quickServiceData, setQuickServiceData] = useState({ date: '', type: 'Monta Natural' });
@@ -98,7 +103,7 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
     };
   }, [initialValues]);
 
-  const { register, handleSubmit, setValue, watch, formState: { errors, isSubmitting } } = useForm({
+  const { register, handleSubmit, setValue, watch, formState: { errors, isSubmitting, dirtyFields } } = useForm({
     resolver: zodResolver(animalSchema),
     defaultValues: defaultValuesMapped
   });
@@ -136,6 +141,7 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
           birthPreview = URL.createObjectURL(birth.photo_blob);
         }
         setImages(prev => ({ ...prev, birth: { ...prev.birth, preview: birthPreview } }));
+        existingEventPhotos.current.birth = { blob: birth.photo_blob || null, path: birth.photo_path || null };
       }
 
       if (weaning) {
@@ -152,6 +158,7 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
           weaningPreview = URL.createObjectURL(weaning.photo_blob);
         }
         setImages(prev => ({ ...prev, weaning: { ...prev.weaning, preview: weaningPreview } }));
+        existingEventPhotos.current.weaning = { blob: weaning.photo_blob || null, path: weaning.photo_path || null };
       }
     };
     loadExistingEvents();
@@ -315,16 +322,30 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
       };
 
       const birthImg = {
-        blob: images.birth.blob || null,
-        url: images.birth.isModified ? null : (images.birth.preview && typeof images.birth.preview === 'string' && !images.birth.preview.startsWith('blob:') ? images.birth.preview : null)
+        blob: images.birth.isModified ? images.birth.blob : existingEventPhotos.current.birth.blob,
+        url: images.birth.isModified ? null : existingEventPhotos.current.birth.path
       };
 
       const weaningImg = {
-        blob: images.weaning.blob || null,
-        url: images.weaning.isModified ? null : (images.weaning.preview && typeof images.weaning.preview === 'string' && !images.weaning.preview.startsWith('blob:') ? images.weaning.preview : null)
+        blob: images.weaning.isModified ? images.weaning.blob : existingEventPhotos.current.weaning.blob,
+        url: images.weaning.isModified ? null : existingEventPhotos.current.weaning.path
       };
 
       await db.transaction('rw', [db.animals, db.growth_events, db.sync_queue], async () => {
+        // --- AISLAMIENTO DEL PESO ACTUAL ---
+        let finalWeight = initialValues?.last_weight_kg || null;
+        let finalWeightDate = initialValues?.last_weight_date || null;
+
+        if (isEditing) {
+          if (dirtyFields.current_weight_kg) {
+            finalWeight = data.current_weight_kg;
+            finalWeightDate = now;
+          }
+        } else {
+           finalWeight = data.current_weight_kg || data.weaning_weight_kg || data.birth_weight_kg || null;
+           finalWeightDate = data.current_weight_kg ? now : (data.weaning_weight_kg ? data.weaning_date : (data.birth_weight_kg ? data.birth_date : null));
+        }
+
         const animalData = {
           id: animalId,
           user_id: userId,
@@ -340,19 +361,21 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
           observations: data.observations || null,
           photo_path: mainImg.url,
           photo_blob: mainImg.blob || (isEditing ? initialValues.photo_blob : null),
-          last_weight_kg: data.current_weight_kg || data.weaning_weight_kg || data.birth_weight_kg || (isEditing ? initialValues.last_weight_kg : null),
-          last_weight_date: data.current_weight_kg ? now : (data.weaning_weight_kg ? data.weaning_date : (data.birth_weight_kg ? data.birth_date : (isEditing ? initialValues.last_weight_date : null))),
+          last_weight_kg: finalWeight,
+          last_weight_date: finalWeightDate,
           created_at: isEditing ? initialValues.created_at : now,
           updated_at: now,
           deleted_at: null
         };
 
+        const syncOps = [];
+
         if (isEditing) {
           await db.animals.put(animalData);
-          await addToSyncQueue('animals', 'UPDATE', animalData);
+          syncOps.push({ table_name: 'animals', operation: 'UPDATE', payload: animalData, created_at: now, status: 'PENDING' });
         } else {
           await db.animals.add(animalData);
-          await addToSyncQueue('animals', 'INSERT', animalData);
+          syncOps.push({ table_name: 'animals', operation: 'INSERT', payload: animalData, created_at: now, status: 'PENDING' });
         }
 
         if (data.birth_date) {
@@ -367,12 +390,12 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
             navel_length: data.navel_length || null,
             observations: data.birth_observations || null,
             photo_path: birthImg.url,
-            photo_blob: birthImg.blob || (eventIds.birth && isEditing ? undefined : null),
+            photo_blob: birthImg.blob,
             created_at: eventIds.birth ? undefined : now,
             updated_at: now
           };
           await db.growth_events.put(birthEvent);
-          await addToSyncQueue('growth_events', eventIds.birth ? 'UPDATE' : 'INSERT', birthEvent);
+          syncOps.push({ table_name: 'growth_events', operation: eventIds.birth ? 'UPDATE' : 'INSERT', payload: birthEvent, created_at: now, status: 'PENDING' });
         }
 
         if (data.weaning_date) {
@@ -387,14 +410,22 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
             scrotal_circumference_cm: data.sc_at_weaning || null,
             observations: data.weaning_observations || null,
             photo_path: weaningImg.url,
-            photo_blob: weaningImg.blob || (eventIds.weaning && isEditing ? undefined : null),
+            photo_blob: weaningImg.blob,
             created_at: eventIds.weaning ? undefined : now,
             updated_at: now
           };
           await db.growth_events.put(weaningEvent);
-          await addToSyncQueue('growth_events', eventIds.weaning ? 'UPDATE' : 'INSERT', weaningEvent);
+          syncOps.push({ table_name: 'growth_events', operation: eventIds.weaning ? 'UPDATE' : 'INSERT', payload: weaningEvent, created_at: now, status: 'PENDING' });
         }
+
+        // Insertar a la cola en bloque dentro del contexto transaccional
+        await db.sync_queue.bulkAdd(syncOps);
       });
+
+      // Fuera de la transacción invocar el engine
+      if (navigator.onLine) {
+        setTimeout(runFullSync, 500);
+      }
 
       setToast({
         show: true,

@@ -13,7 +13,7 @@ export default function ReproductionTab({ animal }) {
 
   const subTabs = [
     { id: 'partos', label: 'Partos', icon: GiCow }, // <-- CAMBIADO: Vaca representando a la madre
-    { id: 'tactos', label: 'Palpaciones', icon: Stethoscope }, // Se mantiene igual
+    { id: 'tactos', label: 'Palpación', icon: Stethoscope }, // Se mantiene igual
     { id: 'servicios', label: 'Servicios', icon: FaVenusMars }, // <-- CAMBIADO: Símbolos de cruce/reproducción
   ];
 
@@ -26,7 +26,7 @@ export default function ReproductionTab({ animal }) {
           <button
             key={tab.id}
             onClick={() => setActiveSubTab(tab.id)}
-            className={`flex flex-row items-center cursor-pointer justify-center gap-1.5 px-2 py-2.5 rounded-full font-bold text-xs uppercase tracking-widest transition-all whitespace-nowrap ${activeSubTab === tab.id
+            className={`flex flex-row items-center cursor-pointer justify-center gap-1.5 px-2 py-2.5 rounded-full font-bold text-[10px] sm:text-xs uppercase tracking-widest transition-all whitespace-nowrap ${activeSubTab === tab.id
               ? 'bg-[#1B4820] text-white shadow-md'
               : 'bg-white text-gray-500 border border-neutral-200 hover:bg-neutral-50'
               }`}

@@ -10,6 +10,7 @@ import {
   Loader2,
   AlertCircle
 } from "lucide-react";
+import { DateInput } from '@/components/ui/DateInput';
 
 // Importaciones Core
 import { db } from "@/lib/db";

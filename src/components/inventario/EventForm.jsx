@@ -211,21 +211,13 @@ export default function EventForm({
         updated_at: now,
       };
 
-      await db.transaction('rw', [db.growth_events, db.animals, db.sync_queue], async () => {
+      await db.transaction('rw', [db.growth_events, db.sync_queue], async () => {
         if (isEditing) {
           await db.growth_events.put(eventData);
           await addToSyncQueue('growth_events', 'UPDATE', eventData);
         } else {
           await db.growth_events.add(eventData);
           await addToSyncQueue('growth_events', 'INSERT', eventData);
-        }
-
-        if (eventData.weight_kg) {
-          await db.animals.update(animal.id, {
-            last_weight_kg: eventData.weight_kg,
-            last_weight_date: eventData.event_date,
-            updated_at: now
-          });
         }
       });
 
