@@ -6,12 +6,13 @@ import { Camera, Save, X, ChevronUp, ChevronDown, Trash2, Plus, CheckCircle, Tri
 import { useLiveQuery } from 'dexie-react-hooks';
 
 import { db } from '@/lib/db';
-import { supabase } from '@/lib/supabaseClient';
 import { addToSyncQueue } from '@/lib/syncUtils';
-import { compressImage } from '@/lib/imageUtils'; // <-- Eliminamos uploadImageToSupabase de aquí
+import { compressImage } from '@/lib/imageUtils';
 import GenealogySelector from './GenealogySelector';
 import CustomSelect from '@/components/ui/CustomSelect';
 import { useNavigate } from 'react-router-dom';
+import { formatShortDateLocal } from '@/lib/dateUtils';
+import { DateInput } from '@/components/ui/DateInput';
 
 // Esquema de validación con Zod
 const animalSchema = z.object({
@@ -47,7 +48,7 @@ const ImageUploader = ({ preview, onCapture, onRemove, label, id }) => {
   const inputRef = useRef(null);
   return (
     <div
-      onClick={() => !preview && inputRef.current?.click()}
+      onClick={() => inputRef.current?.click()}
       className={`relative border-2 border-dashed border-neutral-300 rounded-2xl flex flex-col items-center justify-center text-neutral-400 bg-white/50 hover:bg-white cursor-pointer transition-all group overflow-hidden shadow-inner ${preview ? 'h-48' : 'h-32'}`}
     >
       {preview ? (
@@ -67,7 +68,7 @@ const ImageUploader = ({ preview, onCapture, onRemove, label, id }) => {
           <span className="text-[11px] font-black uppercase tracking-widest text-neutral-500">{label}</span>
         </>
       )}
-      <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={onCapture} />
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={onCapture} />
     </div>
   );
 };
@@ -78,9 +79,9 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
   const [eventIds, setEventIds] = useState({ birth: null, weaning: null });
 
   const [images, setImages] = useState({
-    main: { blob: null, preview: initialValues?.photo_path || null },
-    birth: { blob: null, preview: null },
-    weaning: { blob: null, preview: null }
+    main: { blob: null, preview: initialValues?.photo_path || null, isModified: false },
+    birth: { blob: null, preview: null, isModified: false },
+    weaning: { blob: null, preview: null, isModified: false }
   });
 
   const [toast, setToast] = useState({ show: false, type: 'success', message: '' });
@@ -107,13 +108,19 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
   const fatherId = watch('father_id');
   const motherId = watch('mother_id');
 
-  // --- CARGA DE DATOS AL EDITAR ---
+  // --- CARGA DE DATOS AL EDITAR (FASE 3 & MEMORIA) ---
   useEffect(() => {
     const loadExistingEvents = async () => {
       if (!initialValues?.id) return;
       const events = await db.growth_events.where('animal_id').equals(initialValues.id).toArray();
       const birth = events.find(e => e.event_type === 'Nacimiento');
       const weaning = events.find(e => e.event_type === 'Destete');
+
+      // Imagen Principal
+      if (initialValues.photo_blob) {
+        const url = URL.createObjectURL(initialValues.photo_blob);
+        setImages(prev => ({ ...prev, main: { ...prev.main, preview: url } }));
+      }
 
       if (birth) {
         setEventIds(prev => ({ ...prev, birth: birth.id }));
@@ -122,7 +129,13 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
         setValue('mother_weight_at_birth', birth.mother_weight_kg);
         setValue('navel_length', birth.navel_length);
         setValue('birth_observations', birth.observations);
-        setImages(prev => ({ ...prev, birth: { blob: null, preview: birth.photo_path } }));
+        
+        // Priorizar BLOB local para previsualización en edición
+        let birthPreview = birth.photo_path;
+        if (birth.photo_blob) {
+          birthPreview = URL.createObjectURL(birth.photo_blob);
+        }
+        setImages(prev => ({ ...prev, birth: { ...prev.birth, preview: birthPreview } }));
       }
 
       if (weaning) {
@@ -132,10 +145,26 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
         setValue('mother_weight_at_weaning', weaning.mother_weight_kg);
         setValue('sc_at_weaning', weaning.scrotal_circumference_cm);
         setValue('weaning_observations', weaning.observations);
-        setImages(prev => ({ ...prev, weaning: { blob: null, preview: weaning.photo_path } }));
+
+        // Priorizar BLOB local
+        let weaningPreview = weaning.photo_path;
+        if (weaning.photo_blob) {
+          weaningPreview = URL.createObjectURL(weaning.photo_blob);
+        }
+        setImages(prev => ({ ...prev, weaning: { ...prev.weaning, preview: weaningPreview } }));
       }
     };
     loadExistingEvents();
+
+    // Limpieza de memoria: Revocamos los ObjectURLs al desmontar
+    return () => {
+      setImages(prev => {
+        if (prev.main.preview?.startsWith('blob:')) URL.revokeObjectURL(prev.main.preview);
+        if (prev.birth.preview?.startsWith('blob:')) URL.revokeObjectURL(prev.birth.preview);
+        if (prev.weaning.preview?.startsWith('blob:')) URL.revokeObjectURL(prev.weaning.preview);
+        return prev;
+      });
+    };
   }, [initialValues, setValue]);
 
   const motherServices = useLiveQuery(
@@ -143,10 +172,10 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
       if (!motherId) return [];
       const services = await db.services.where('mother_id').equals(motherId).toArray();
       const validServices = services.filter(s => !s.deleted_at);
-      
+
       const fatherIds = validServices.map(s => s.father_id).filter(Boolean);
       const fathers = fatherIds.length > 0 ? await db.animals.where('id').anyOf(fatherIds).toArray() : [];
-      
+
       const fatherMap = {};
       fathers.forEach(f => { fatherMap[f.id] = f.number; });
 
@@ -172,16 +201,16 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
         toroInfo = ` (Toro: #${s.father_number})`;
       } else if (s.father_id) {
         if (s.father_id.includes('-') && s.father_id.length > 20) {
-             toroInfo = ` (Toro: Desconocido/Eliminado)`;
+          toroInfo = ` (Toro: Desconocido/Eliminado)`;
         } else {
-             toroInfo = ` (Toro: ${s.father_id})`; 
+          toroInfo = ` (Toro: ${s.father_id})`;
         }
       } else {
         toroInfo = ` (Sin Toro)`;
       }
       return {
         value: s.id,
-        label: `${new Date(s.service_date).toLocaleDateString()} - ${s.type_conception}${toroInfo}`
+        label: `${formatShortDateLocal(s.service_date)} - ${s.type_conception}${toroInfo}`
       };
     });
   }, [motherServices]);
@@ -197,7 +226,10 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
     try {
       const compressedBlob = await compressImage(file);
       const previewUrl = URL.createObjectURL(compressedBlob);
-      setImages(prev => ({ ...prev, [type]: { blob: compressedBlob, preview: previewUrl } }));
+      setImages(prev => ({ 
+        ...prev, 
+        [type]: { blob: compressedBlob, preview: previewUrl, isModified: true } 
+      }));
     } catch (error) {
       console.error('Error procesando imagen:', error);
       alert('Error al comprimir la foto.');
@@ -205,24 +237,12 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
   };
 
   const removeImage = (type) => {
-    setImages(prev => ({ ...prev, [type]: { blob: null, preview: null } }));
+    setImages(prev => ({ ...prev, [type]: { blob: null, preview: null, isModified: true } }));
   };
 
-  // --- FUNCIÓN CLAVE: OBTENER USUARIO INCLUSO SIN INTERNET ---
-  const getSafeUserId = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user?.id) return session.user.id;
-
-    // Si no hay sesión válida (caducó offline), verificamos nuestro Pase VIP local
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      const isOfflineAuthorized = localStorage.getItem("ganadera_offline_session") === "true";
-      if (isOfflineAuthorized) {
-        // Robamos el ID de usuario de cualquier animal guardado para mantener la consistencia
-        const anyAnimal = await db.animals.toCollection().first();
-        return anyAnimal?.user_id || "offline-user";
-      }
-    }
-    return null; // Si devuelve null, sí pateamos al Login
+  // --- LÓGICA LOCAL-FIRST (Fase 2) ---
+  const getLocalUserId = () => {
+    return localStorage.getItem("ganadera_user_id");
   };
 
   const handleQuickServiceCreate = async () => {
@@ -232,7 +252,7 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
     setIsSavingQuickService(true);
 
     try {
-      const userId = await getSafeUserId();
+      const userId = getLocalUserId();
 
       if (!userId) {
         setToast({ show: true, type: 'error', message: 'Sesión expirada. Conéctate a internet.' });
@@ -257,7 +277,7 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
       });
 
       setToast({ show: true, type: 'success', message: 'Servicio registrado correctamente' });
-      
+
       setTimeout(() => {
         setToast({ show: false, type: 'success', message: '' });
         setValue('origin_service_id', newService.id);
@@ -275,7 +295,7 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
 
   const handleSave = async (data) => {
     try {
-      const userId = await getSafeUserId();
+      const userId = getLocalUserId();
 
       if (!userId) {
         alert('Sesión expirada. Por favor, conéctate a internet e inicia sesión nuevamente.');
@@ -287,21 +307,21 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
       const animalId = initialValues?.id || crypto.randomUUID();
       const now = new Date().toISOString();
 
-      // --- MAGIA OFFLINE: SOLO EXTRAEMOS EL BLOB ---
-      // El SyncManager se encargará de subirlo a la nube cuando haya buen internet
+      // Si ha sido modificado, el photo_path debe ser null para que el proceso de sincronización 
+      // lo detecte como algo nuevo que debe subir (o para eliminarlo si es null).
       const mainImg = {
         blob: images.main.blob || null,
-        url: isEditing ? initialValues?.photo_path : null
+        url: images.main.isModified ? null : (isEditing ? initialValues?.photo_path : null)
       };
-      
+
       const birthImg = {
         blob: images.birth.blob || null,
-        url: images.birth.preview && typeof images.birth.preview === 'string' && !images.birth.preview.startsWith('blob:') ? images.birth.preview : null
+        url: images.birth.isModified ? null : (images.birth.preview && typeof images.birth.preview === 'string' && !images.birth.preview.startsWith('blob:') ? images.birth.preview : null)
       };
-      
+
       const weaningImg = {
         blob: images.weaning.blob || null,
-        url: images.weaning.preview && typeof images.weaning.preview === 'string' && !images.weaning.preview.startsWith('blob:') ? images.weaning.preview : null
+        url: images.weaning.isModified ? null : (images.weaning.preview && typeof images.weaning.preview === 'string' && !images.weaning.preview.startsWith('blob:') ? images.weaning.preview : null)
       };
 
       await db.transaction('rw', [db.animals, db.growth_events, db.sync_queue], async () => {
@@ -376,13 +396,12 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
         }
       });
 
-      setToast({ 
-        show: true, 
-        type: 'success', 
-        message: isEditing ? 'Cambios guardados exitosamente' : 'Animal registrado con éxito' 
+      setToast({
+        show: true,
+        type: 'success',
+        message: isEditing ? 'Cambios guardados exitosamente' : 'Animal registrado con éxito'
       });
 
-      // --- CAMBIO UX: Cerrar rápido en 500ms ---
       setTimeout(() => {
         setToast({ show: false, type: 'success', message: '' });
         onSubmitSuccess && onSubmitSuccess(animalId);
@@ -422,7 +441,7 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
       {/* 1. IDENTIFICACIÓN BÁSICA */}
       <section className="bg-neutral-50 rounded-3xl p-5 mb-4 border border-neutral-100 space-y-4">
         <h3 className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 mb-2 block">Identificación Básica</h3>
-        
+
         <div>
           <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Código / Número *</label>
           <input {...register('number')} placeholder="Ej: 1234" className={`w-full bg-white rounded-xl px-4 py-3 text-neutral-800 placeholder-neutral-400 border transition-all focus:outline-none focus:ring-2 focus:ring-[#1B4820]/20 ${errors.number ? 'border-red-500' : 'border-neutral-100 focus:border-[#1B4820]/30'}`} />
@@ -475,11 +494,11 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
           <div className="w-1 h-5 rounded-full bg-[#8C6746]"></div>
           <h3 className="text-lg font-bold text-[#1B4820]">Genealogía</h3>
         </div>
-        
+
         <div>
           <GenealogySelector label="Padre (Toro)" sex="Macho" value={fatherId} onChange={(id) => setValue('father_id', id)} onCreateNew={(sex) => onOpenModal && onOpenModal(sex, (id) => setValue('father_id', id))} />
         </div>
-        
+
         <div>
           <GenealogySelector label="Madre (Vaca)" sex="Hembra" value={motherId} onChange={(id) => setValue('mother_id', id)} onCreateNew={(sex) => onOpenModal && onOpenModal(sex, (id) => setValue('mother_id', id))} />
         </div>
@@ -507,7 +526,7 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
 
                     <div>
                       <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Fecha del Servicio</label>
-                      <input type="date" value={quickServiceData.date} onChange={e => setQuickServiceData(d => ({ ...d, date: e.target.value }))} className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
+                      <DateInput value={quickServiceData.date} onChange={e => setQuickServiceData(d => ({ ...d, date: e.target.value }))} className="w-full bg-neutral-50 border border-neutral-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
                     </div>
 
                     <div>
@@ -575,27 +594,27 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
           <div className="overflow-hidden">
             <div className="pt-5 space-y-4">
               <ImageUploader id="birth" label="Foto al Nacer" preview={images.birth.preview} onCapture={(e) => handleImageCapture(e, 'birth')} onRemove={() => removeImage('birth')} />
-              
+
               <div>
                 <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Fecha de Nacimiento</label>
-                <input type="date" {...register('birth_date')} className="w-full bg-white rounded-xl px-4 py-3 text-neutral-800 border border-neutral-100 focus:outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
+                <DateInput {...register('birth_date')} className="w-full bg-white rounded-xl px-4 py-3 text-neutral-800 border border-neutral-100 focus:outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
               </div>
-              
+
               <div>
                 <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Peso de la Cría al Nacer (KG)</label>
                 <input type="number" step="any" {...register('birth_weight_kg')} placeholder="Ej: 35" className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100 outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
               </div>
-              
+
               <div>
                 <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Peso Madre al Parto (KG)</label>
                 <input type="number" step="any" {...register('mother_weight_at_birth')} placeholder="Ej: 450" className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100 outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
               </div>
-              
+
               <div>
                 <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Longitud del Ombligo (CM)</label>
                 <input {...register('navel_length')} placeholder="Ej: 5" className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100 outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
               </div>
-              
+
               <div>
                 <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Observaciones del Parto</label>
                 <textarea {...register('birth_observations')} placeholder="Detalles u observaciones del parto..." rows={2} className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100 outline-none resize-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
@@ -618,27 +637,27 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
           <div className="overflow-hidden">
             <div className="pt-5 space-y-4">
               <ImageUploader id="weaning" label="Foto al Destete" preview={images.weaning.preview} onCapture={(e) => handleImageCapture(e, 'weaning')} onRemove={() => removeImage('weaning')} />
-              
+
               <div>
                 <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Fecha de Destete</label>
-                <input type="date" {...register('weaning_date')} className="w-full bg-white rounded-xl px-4 py-3 text-neutral-800 border border-neutral-100 focus:outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
+                <DateInput {...register('weaning_date')} className="w-full bg-white rounded-xl px-4 py-3 text-neutral-800 border border-neutral-100 focus:outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
               </div>
-              
+
               <div>
                 <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Peso al Destete (KG)</label>
                 <input type="number" step="any" {...register('weaning_weight_kg')} placeholder="Ej: 180" className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100 outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
               </div>
-              
+
               <div>
                 <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Circ. Escrotal al Destete (CM)</label>
                 <input type="number" step="any" {...register('sc_at_weaning')} placeholder="Ej: 20" className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100 outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
               </div>
-              
+
               <div>
                 <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Peso Madre al Destete (KG)</label>
                 <input type="number" step="any" {...register('mother_weight_at_weaning')} placeholder="Ej: 420" className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100 outline-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
               </div>
-              
+
               <div>
                 <label className="text-[10px] font-bold text-neutral-400 uppercase mb-1 block ml-1">Observaciones del Destete</label>
                 <textarea {...register('weaning_observations')} placeholder="Detalles u observaciones del destete..." rows={2} className="w-full bg-white rounded-xl px-4 py-3 border border-neutral-100 outline-none resize-none focus:ring-2 focus:ring-[#1B4820]/20 transition-all" />
@@ -662,22 +681,22 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
         </div>
       </section>
 
-      {/* FOOTERS */}
+      {/* FOOTERS (¡Totalmente Restaurados!) */}
       {!isModal && (
         <div className="fixed bottom-0 left-0 w-full bg-[#fcfcfa]/90 backdrop-blur-md border-t border-neutral-100 p-4 z-40">
           <div className="max-w-md mx-auto grid grid-cols-2 gap-3">
-            <button 
-              type="button" 
-              onClick={onCancel} 
+            <button
+              type="button"
+              onClick={onCancel}
               disabled={isSubmitting}
               className="flex items-center justify-center gap-2 bg-[#D15E5A] hover:bg-[#B94545] text-white rounded-full py-4 transition-all active:scale-95 shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <X className="w-5 h-5" strokeWidth={2.5} />
               <span className="text-xs font-bold uppercase tracking-widest">Cancelar</span>
             </button>
-            <button 
-              type="submit" 
-              disabled={isSubmitting} 
+            <button
+              type="submit"
+              disabled={isSubmitting}
               className="flex items-center justify-center gap-2 bg-[#1A3621] hover:bg-[#0F2912] text-white rounded-full py-4 transition-all active:scale-95 shadow-[0_4px_14px_rgba(26,54,33,0.3)] cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
@@ -698,18 +717,18 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
 
       {isModal && (
         <div className="grid grid-cols-2 gap-3 mt-8">
-          <button 
-            type="button" 
-            onClick={onCancel} 
+          <button
+            type="button"
+            onClick={onCancel}
             disabled={isSubmitting}
             className="flex items-center justify-center gap-2 bg-[#D15E5A] text-white rounded-full py-4 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
           >
             <X className="w-5 h-5" strokeWidth={2.5} />
             <span className="text-xs font-bold uppercase tracking-widest">Cancelar</span>
           </button>
-          <button 
-            type="submit" 
-            disabled={isSubmitting} 
+          <button
+            type="submit"
+            disabled={isSubmitting}
             className="flex items-center justify-center gap-2 bg-[#1A3621] text-white rounded-full py-4 shadow-lg shadow-emerald-900/20 transition-all active:scale-95 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
           >
             {isSubmitting ? (

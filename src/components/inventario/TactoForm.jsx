@@ -57,29 +57,14 @@ export default function TactoForm({
     },
   });
 
-  // --- FUNCIÓN CLAVE: OBTENER USUARIO INCLUSO SIN INTERNET ---
-  const getSafeUserId = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user?.id) return session.user.id;
-
-    // Si no hay sesión válida (caducó offline), verificamos nuestro Pase VIP local
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      const isOfflineAuthorized = localStorage.getItem("ganadera_offline_session") === "true";
-      if (isOfflineAuthorized) {
-        // Robamos el ID de usuario del animal al que le hacemos el tacto
-        if (animal?.user_id) return animal.user_id;
-        
-        // Plan C: Buscamos cualquier animal 
-        const anyAnimal = await db.animals.toCollection().first();
-        return anyAnimal?.user_id || "offline-user";
-      }
-    }
-    return null; 
+  // --- LÓGICA LOCAL-FIRST (Zero Delay) ---
+  const getLocalUserId = () => {
+    return localStorage.getItem("ganadera_user_id");
   };
 
   const onSubmit = async (data) => {
     if (!resultado) {
-      alert("Por favor selecciona un resultado para el tacto.");
+      alert("Por favor selecciona un resultado para la palapación.");
       return;
     }
 
@@ -87,7 +72,7 @@ export default function TactoForm({
     setIsSaving(true);
 
     try {
-      const userId = await getSafeUserId();
+      const userId = getLocalUserId();
       
       if (!userId) {
         window.location.href = '/login';
@@ -125,7 +110,7 @@ export default function TactoForm({
       }, 500);
 
     } catch (err) {
-      console.error('Error guardando tacto:', err);
+      console.error('Error guardando palpación:', err);
       alert('Error al guardar. Intenta de nuevo.');
     } finally {
       setIsSaving(false);
@@ -138,7 +123,7 @@ export default function TactoForm({
       {showToast && (
         <div className="fixed z-[100] px-5 py-4 bg-[#1A3621] text-white rounded-2xl shadow-xl transition-all animate-in fade-in slide-in-from-top-5 top-5 left-1/2 -translate-x-1/2 sm:left-auto sm:right-6 sm:-translate-x-0 font-bold text-sm flex items-center gap-3 w-[90%] max-w-sm sm:w-auto">
           <CheckCircle className="w-6 h-6 text-emerald-400" />
-          {isEditing ? 'Registro actualizado' : 'Registro de tacto guardado'}
+          {isEditing ? 'Registro actualizado' : 'Registro de palpación guardado'}
         </div>
       )}
 
@@ -156,11 +141,10 @@ export default function TactoForm({
 
       {/* SECCIÓN 1: FECHA DEL TACTO */}
       <div className="space-y-3">
-        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-1">Fecha del Tacto *</label>
+        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-1">Fecha de la Palpación *</label>
         <div className={`flex items-center gap-4 bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100 focus-within:border-[#1B4820]`}>
            <Calendar size={20} className="text-[#1A3621] opacity-40" />
-           <input
-            type="date"
+           <DateInput
             className="font-black text-gray-800 text-lg outline-none w-full bg-transparent"
             {...register("fechaTacto", { required: true })}
           />
@@ -170,7 +154,7 @@ export default function TactoForm({
 
       {/* SECCIÓN 2: RESULTADO DEL TACTO (RADIO CARDS) */}
       <div className="space-y-3">
-        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-1">Resultado del Tacto</label>
+        <label className="text-[10px] font-bold uppercase tracking-widest text-gray-400 ml-1">Resultado de la Palpación</label>
         <div className="grid grid-cols-2 gap-4">
           <button
             type="button"

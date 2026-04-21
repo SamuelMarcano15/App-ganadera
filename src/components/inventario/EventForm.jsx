@@ -11,7 +11,8 @@ import {
   MessageSquare,
   AlertTriangle,
   Loader2,
-  Info
+  Info,
+  Trash2
 } from "lucide-react";
 
 // Importaciones Core
@@ -21,6 +22,7 @@ import { addToSyncQueue } from "@/lib/syncUtils";
 import { compressImage } from "@/lib/imageUtils"; // <-- Eliminamos uploadImageToSupabase
 import AnimalImage from "@/components/inventario/AnimalImage";
 import BottomSheet from "@/components/ui/BottomSheet";
+import { DateInput } from '@/components/ui/DateInput';
 
 export default function EventForm({ 
   animal, 
@@ -35,6 +37,7 @@ export default function EventForm({
   // --- OPCIONES ---
   const tipoOpciones = ["Destete", "Peso a los 12 meses", "Peso a los 18 meses", "Otro"];
   const largoOpciones = [
+    { value: "", label: "No especificado" },
     { value: "1", label: "Corto (1)" },
     { value: "2", label: "Moderado (2)" },
     { value: "3", label: "Medio (3)" },
@@ -66,11 +69,13 @@ export default function EventForm({
   const [isLargoOpen, setIsLargoOpen] = useState(false);
 
   const [photoPreview, setPhotoPreview] = useState(() => {
-    if (initialValues?.photo_path) return initialValues.photo_path;
+    // FASE 2: Prioridad absoluta al binario local para modo Offline
     if (initialValues?.photo_blob) return URL.createObjectURL(initialValues.photo_blob);
+    if (initialValues?.photo_path) return initialValues.photo_path;
     return null;
   });
   const [photoBlob, setPhotoBlob] = useState(null);
+  const [isPhotoModified, setIsPhotoModified] = useState(false);
   const fileInputRef = useRef(null);
 
   // --- FORMULARIO ---
@@ -80,12 +85,23 @@ export default function EventForm({
       pesoVaca: initialValues?.mother_weight_kg || "",
       pesoCria: initialValues?.weight_kg || "",
       circunferencia: initialValues?.scrotal_circumference_cm || "",
-      largoViril: initialValues?.navel_length || "1",
+      largoViril: initialValues?.navel_length || "",
       observaciones: initialValues?.observations || "",
     },
   });
 
   const selectedLargo = watch("largoViril");
+
+  // --- SINCRONIZACIÓN DE FOTO (MODO EDICIÓN) ---
+  useEffect(() => {
+    if (isEditing && initialValues) {
+      if (initialValues.photo_blob) {
+        setPhotoPreview(URL.createObjectURL(initialValues.photo_blob));
+      } else if (initialValues.photo_path) {
+        setPhotoPreview(initialValues.photo_path);
+      }
+    }
+  }, [initialValues, isEditing]);
 
   // --- LÓGICA DE DUPLICADOS ---
   const isDuplicateBlocked = useMemo(() => {
@@ -141,9 +157,16 @@ export default function EventForm({
       const compressed = await compressImage(file);
       setPhotoBlob(compressed);
       setPhotoPreview(URL.createObjectURL(compressed));
+      setIsPhotoModified(true);
     } catch (err) {
       console.error('Error procesando imagen:', err);
     }
+  };
+
+  const removePhoto = () => {
+    setPhotoBlob(null);
+    setPhotoPreview(null);
+    setIsPhotoModified(true);
   };
 
   const getDisplayTitleExternal = () => {
@@ -151,20 +174,9 @@ export default function EventForm({
     return tipoEvento;
   };
 
-  // --- OBTENER USUARIO ---
-  const getSafeUserId = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user?.id) return session.user.id;
-
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      const isOfflineAuthorized = localStorage.getItem("ganadera_offline_session") === "true";
-      if (isOfflineAuthorized) {
-        if (animal?.user_id) return animal.user_id;
-        const anyAnimal = await db.animals.toCollection().first();
-        return anyAnimal?.user_id || "offline-user";
-      }
-    }
-    return null; 
+  // --- LÓGICA LOCAL-FIRST (Zero Delay) ---
+  const getLocalUserId = () => {
+    return localStorage.getItem("ganadera_user_id");
   };
 
   const onSubmit = async (data) => {
@@ -172,7 +184,7 @@ export default function EventForm({
     setIsSaving(true);
 
     try {
-      const userId = await getSafeUserId();
+      const userId = getLocalUserId();
       
       if (!userId) {
         window.location.href = '/login';
@@ -193,8 +205,8 @@ export default function EventForm({
         scrotal_circumference_cm: data.circunferencia ? parseFloat(data.circunferencia) : null,
         navel_length: data.largoViril || null,
         observations: data.observations || null,
-        photo_path: isEditing ? initialValues.photo_path : null, // Dejamos que SyncManager la llene luego
-        photo_blob: photoBlob || (isEditing ? initialValues.photo_blob : null),
+        photo_path: isPhotoModified ? null : (isEditing ? initialValues.photo_path : null),
+        photo_blob: photoBlob || (isEditing && !isPhotoModified ? initialValues.photo_blob : null),
         created_at: isEditing ? initialValues.created_at : now,
         updated_at: now,
       };
@@ -345,7 +357,7 @@ export default function EventForm({
           <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3 ml-1">Fecha del Evento</label>
           <div className="flex items-center gap-4 bg-gray-50 rounded-2xl px-5 py-4 border border-gray-100">
             <Calendar size={22} className="text-[#1A3621] opacity-70" />
-            <input type="date" className="font-black text-gray-800 text-lg outline-none w-full bg-transparent" {...register("fechaEvento")} />
+            <DateInput className="font-black text-gray-800 text-lg outline-none w-full bg-transparent" {...register("fechaEvento")} />
           </div>
         </div>
 
@@ -369,7 +381,7 @@ export default function EventForm({
                 setIsTipoOpen(false);
               }}
             >
-              <span className="font-black text-gray-800 text-base">{largoOpciones.find(o => o.value === selectedLargo)?.label || "Corto (1)"}</span>
+              <span className="font-black text-gray-800 text-base">{largoOpciones.find(o => o.value === selectedLargo)?.label || "No especificado"}</span>
               <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isLargoOpen ? "rotate-180" : ""}`} />
             </div>
 
@@ -413,7 +425,16 @@ export default function EventForm({
         className="relative h-48 border-4 border-dashed border-gray-200 rounded-[3rem] flex flex-col items-center justify-center bg-white cursor-pointer active:scale-95 transition-all hover:border-emerald-200 hover:bg-emerald-50/10 overflow-hidden"
       >
         {photoPreview ? (
-          <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+          <>
+            <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); removePhoto(); }}
+              className="absolute top-4 right-4 bg-red-500 text-white p-2.5 rounded-full shadow-lg hover:bg-red-600 active:scale-90 transition-all z-10 cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </>
         ) : (
           <div className="flex flex-col items-center">
             <div className="bg-emerald-50 rounded-full p-5 mb-4 group-hover:bg-emerald-100 transition-colors">
@@ -423,7 +444,7 @@ export default function EventForm({
             <span className="text-[9px] text-gray-400 mt-1 font-bold">Opcional para el registro</span>
           </div>
         )}
-        <input type="file" accept="image/*" capture="environment" ref={fileInputRef} onChange={handlePhotoUpload} className="hidden" />
+        <input type="file" accept="image/*" ref={fileInputRef} onChange={handlePhotoUpload} className="hidden" />
       </div>
 
       {/* Footer */}

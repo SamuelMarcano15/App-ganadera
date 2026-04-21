@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, SlidersHorizontal, Scale, Plus, X, Syringe, ClipboardPlus, CheckCircle2, XCircle, Check } from 'lucide-react';
+import { Search, SlidersHorizontal, Scale, Plus, X, Syringe, ClipboardPlus, CheckCircle2, XCircle, Check, AlertCircle } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
-import { calculateAge, formatWeight } from '@/lib/dateUtils';
+import { calculateAge, formatWeight, parseLocalDate } from '@/lib/dateUtils';
 import SyncStatus from '@/components/ui/SyncStatus';
 import AnimalImage from '@/components/inventario/AnimalImage';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -71,6 +71,12 @@ export default function InventarioPage() {
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [selectedAnimalIds, setSelectedAnimalIds] = useState(new Set());
 
+  // --- ESTADO PARA RESALTAR 8 MESES ---
+  const [viewedHighlights, setViewedHighlights] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('viewed8Months') || '[]'); }
+    catch { return []; }
+  });
+
   const [filters, setFilters] = useState({
     sex: [],
     status: [],
@@ -99,10 +105,20 @@ export default function InventarioPage() {
 
   const activeFiltersCount = filters.sex.length + filters.status.length + filters.category.length;
 
+  // Lógica para detectar exactamente los 8 meses
+  const is8MonthsOld = (animal) => {
+    if (!animal.birth_date) return false;
+    if (viewedHighlights.includes(animal.id)) return false;
+    
+    const birth = parseLocalDate(animal.birth_date);
+    const months = (new Date() - birth) / (1000 * 60 * 60 * 24 * 30.44);
+    return Math.floor(months) === 8;
+  };
+
   const filteredAnimals = useMemo(() => {
     if (!allAnimals) return [];
 
-    return allAnimals.filter(a => {
+    const filtered = allAnimals.filter(a => {
       const term = searchTerm.toLowerCase();
       const matchesSearch = !term || a.number.toLowerCase().includes(term) || a.id.toLowerCase().includes(term);
       const matchesSex = filters.sex.length === 0 || filters.sex.includes(a.sex);
@@ -111,7 +127,8 @@ export default function InventarioPage() {
 
       let category = 'Desconocida';
       if (a.birth_date) {
-        const months = (new Date() - new Date(a.birth_date)) / (1000 * 60 * 60 * 24 * 30.44);
+        const birth = parseLocalDate(a.birth_date);
+        const months = (new Date() - birth) / (1000 * 60 * 60 * 24 * 30.44);
         if (months < 12) category = 'Becerro';
         else if (months < 24) category = 'Maute';
         else if (months < 36) category = 'Novillo';
@@ -121,7 +138,18 @@ export default function InventarioPage() {
 
       return matchesSearch && matchesSex && matchesStatus && matchesCategory;
     });
-  }, [allAnimals, searchTerm, filters]);
+
+    // Ordenar: Los de 8 meses resaltados van de primeros
+    const highlighted = [];
+    const normal = [];
+    
+    filtered.forEach(a => {
+      if (is8MonthsOld(a)) highlighted.push(a);
+      else normal.push(a);
+    });
+
+    return [...highlighted, ...normal];
+  }, [allAnimals, searchTerm, filters, viewedHighlights]);
 
   // --- REINICIAR PAGINACIÓN AL FILTRAR O BUSCAR ---
   useEffect(() => {
@@ -143,7 +171,8 @@ export default function InventarioPage() {
       if (type === 'category') {
         let cat = 'Desconocida';
         if (a.birth_date) {
-          const months = (new Date() - new Date(a.birth_date)) / (1000 * 60 * 60 * 24 * 30.44);
+          const birth = parseLocalDate(a.birth_date);
+          const months = (new Date() - birth) / (1000 * 60 * 60 * 24 * 30.44);
           if (months < 12) cat = 'Becerro';
           else if (months < 24) cat = 'Maute';
           else if (months < 36) cat = 'Novillo';
@@ -322,28 +351,30 @@ export default function InventarioPage() {
         {paginatedAnimals.length > 0 ? (
           <>
             <motion.div
-              variants={{ show: { transition: { staggerChildren: 0.1 } } }}
-              initial="hidden"
-              animate="show"
+              layout
               className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6"
             >
               {paginatedAnimals.map((animal) => {
                 const isSelected = selectedAnimalIds.has(animal.id);
+                const isHighlight = is8MonthsOld(animal);
 
                 const CardContent = (
-                  <motion.article
-                    variants={{ hidden: { opacity: 0, y: 30 }, show: { opacity: 1, y: 0 } }}
-                    transition={{ type: "spring", stiffness: 260, damping: 20 }}
-                    className={`bg-white rounded-[2rem] overflow-hidden shadow-md hover:shadow-2xl transition-all duration-300 flex flex-col h-full cursor-pointer group border-2 ${isSelected ? 'border-[#1B4820]' : 'border-neutral-200'
-                      }`}
-                  >
-                    <div className="relative aspect-square w-full bg-[#E5E7EB] overflow-hidden">
+                  <article className={`relative bg-white rounded-[2rem] overflow-hidden shadow-md hover:shadow-2xl transition-all duration-300 flex flex-col h-full cursor-pointer group border-2 ${isSelected ? 'border-[#1B4820]' : isHighlight ? 'border-amber-400 shadow-amber-400/20 shadow-lg' : 'border-neutral-200'}`}>
+                    
+                    {/* Alerta Visual de 8 Meses */}
+                    {isHighlight && !isBatchMode && (
+                      <div className="absolute top-0 left-0 w-full bg-amber-400 text-amber-950 text-[9px] font-black uppercase tracking-widest text-center py-1.5 z-20 flex items-center justify-center gap-1 shadow-sm">
+                        <AlertCircle className="w-3 h-3" />
+                        ¡8 Meses!
+                      </div>
+                    )}
+
+                    <div className={`relative aspect-square w-full bg-[#E5E7EB] overflow-hidden ${isHighlight && !isBatchMode ? 'mt-6' : ''}`}>
                       <AnimalImage
                         photoPath={animal.photo_path}
                         photoBlob={animal.photo_blob}
                         alt={`#${animal.number}`}
-                        className={`w-full h-full group-hover:scale-105 transition-transform duration-500 opacity-100 ${isSelected ? 'opacity-70 grayscale-[0.3]' : ''
-                          }`}
+                        className={`w-full h-full group-hover:scale-105 transition-transform duration-500 opacity-100 ${isSelected ? 'opacity-70 grayscale-[0.3]' : ''}`}
                       />
 
                       {isBatchMode && (
@@ -373,17 +404,37 @@ export default function InventarioPage() {
                         <span className="text-sm font-black tracking-tight">{formatWeight(animal.last_weight_kg)}</span>
                       </div>
                     </div>
-                  </motion.article>
+                  </article>
                 );
 
-                return isBatchMode ? (
-                  <div key={animal.id} onClick={() => toggleAnimalSelection(animal.id)}>
-                    {CardContent}
-                  </div>
-                ) : (
-                  <Link key={animal.id} to={`/inventario/perfil?id=${animal.id}`}>
-                    {CardContent}
-                  </Link>
+                // Único contenedor motion por elemento, soluciona el bug de la tarjeta invisible
+                return (
+                  <motion.div
+                    layout
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    key={animal.id}
+                    onClick={() => {
+                      if (isBatchMode) {
+                        toggleAnimalSelection(animal.id);
+                      } else if (isHighlight) {
+                        // Guardar en cache al darle click para quitarle el resaltado
+                        const updated = [...viewedHighlights, animal.id];
+                        setViewedHighlights(updated);
+                        localStorage.setItem('viewed8Months', JSON.stringify(updated));
+                      }
+                    }}
+                  >
+                    {isBatchMode ? (
+                      <div className="block h-full">
+                        {CardContent}
+                      </div>
+                    ) : (
+                      <Link to={`/inventario/perfil?id=${animal.id}`} className="block h-full">
+                        {CardContent}
+                      </Link>
+                    )}
+                  </motion.div>
                 );
               })}
             </motion.div>

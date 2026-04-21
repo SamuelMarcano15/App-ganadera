@@ -1,15 +1,14 @@
-
 import React, { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
 
-export default function AnimalImage({ 
-  photoPath, 
-  photoBlob, 
-  alt, 
-  className = "", 
-  sex = "Hembra", 
-  birthDate = null 
+export default function AnimalImage({
+  photoPath,
+  photoBlob,
+  alt,
+  className = "",
+  sex = "Hembra",
+  birthDate = null
 }) {
   const [imgSrc, setImgSrc] = useState(null);
   const [imgError, setImgError] = useState(false);
@@ -24,18 +23,28 @@ export default function AnimalImage({
     return db.animals.where('number').equals(animalNumber).first();
   }, [animalNumber]);
 
-  // --- 1. PROCESAR IMAGEN REAL ---
+  // --- 1. FASE 3: PRIORIDAD LOCAL (BLOB ANTES QUE NUBE) ---
   useEffect(() => {
     setImgError(false);
-    if (photoPath) {
+    let objectUrl = null;
+
+    if (photoBlob) {
+      // Prioridad 1: Siempre usar la imagen física que tenemos en el disco duro (Dexie)
+      objectUrl = URL.createObjectURL(photoBlob);
+      setImgSrc(objectUrl);
+    } else if (photoPath) {
+      // Prioridad 2: Solo si no hay archivo físico, intentamos cargar desde la nube de Supabase
       setImgSrc(photoPath);
-    } else if (photoBlob) {
-      const url = URL.createObjectURL(photoBlob);
-      setImgSrc(url);
-      return () => URL.revokeObjectURL(url);
     } else {
       setImgSrc(null);
     }
+
+    // Limpieza de memoria (Vital para evitar que la app se vuelva lenta tras ver muchas fotos)
+    return () => {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
   }, [photoPath, photoBlob]);
 
   // --- 2. LÓGICA DE ICONO ---
@@ -61,23 +70,19 @@ export default function AnimalImage({
   if (!imgSrc || imgError) {
     return (
       <div className={`flex items-center justify-center bg-[#E5E7EB] w-full h-full ${className}`}>
-        <img 
-          src={placeholderSrc} 
-          alt="Silueta" 
-          /* CAMBIO CLAVE: 
-             1. p-[15%]: El padding ahora es relativo al tamaño del círculo.
-             2. opacity-20: Un poco más sutil para que se vea más profesional.
-          */
-          className="w-full h-full p-[18%] object-contain opacity-30 mix-blend-multiply drop-shadow-sm transition-all" 
+        <img
+          src={placeholderSrc}
+          alt="Silueta"
+          className="w-full h-full p-[18%] object-contain opacity-30 mix-blend-multiply drop-shadow-sm transition-all"
         />
       </div>
     );
   }
 
   return (
-    <img 
-      src={imgSrc} 
-      alt={alt || "Animal"} 
+    <img
+      src={imgSrc}
+      alt={alt || "Animal"}
       className={`object-cover w-full h-full ${className}`}
       onError={() => setImgError(true)}
     />

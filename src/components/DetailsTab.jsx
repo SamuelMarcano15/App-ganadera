@@ -1,7 +1,7 @@
 import React from 'react';
 import { IdCard, Network, FileText, Pencil, CircleAlert } from 'lucide-react';
 import AnimalImage from '@/components/inventario/AnimalImage';
-import { calculateAge, formatWeight } from '@/lib/dateUtils';
+import { calculateAge, formatWeight, formatDateLocal } from '@/lib/dateUtils';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
 import { Link } from 'react-router-dom';
@@ -16,6 +16,14 @@ export default function DetailsTab({ animal, onEdit }) {
     },
     [animal]
   );
+
+  const originService = useLiveQuery(
+    () => animal?.origin_service_id
+      ? db.services.get(animal.origin_service_id)
+      : null,
+    [animal]
+  );
+
   if (!animal) return null;
 
   return (
@@ -73,9 +81,15 @@ export default function DetailsTab({ animal, onEdit }) {
           </div>
           <div className="grid grid-cols-2 gap-y-4 text-sm">
             <DataRow label="Número / ID" value={`#${animal.number}`} />
-            <DataRow label="Fecha Nacimiento" value={animal.birth_date ? new Date(animal.birth_date).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }) : '---'} />
+            <DataRow label="Fecha Nacimiento" value={formatDateLocal(animal.birth_date)} />
             <DataRow label="Sexo" value={animal.sex || '---'} />
             <DataRow label="Color / Pelaje" value={animal.color || '---'} />
+            {originService && (
+              <DataRow 
+                label="Servicio de Origen" 
+                value={originService.type_conception || '---'} 
+              />
+            )}
             <DataRow label="Estado Actual" value={animal.status || 'Activo'} isStatus={true} statusType={animal.status} />
           </div>
         </section>

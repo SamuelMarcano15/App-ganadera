@@ -21,6 +21,7 @@ import { addToSyncQueue } from "@/lib/syncUtils";
 import GenealogySelector from "@/components/inventario/GenealogySelector";
 import BottomSheet from "@/components/ui/BottomSheet";
 import AnimalForm from "@/components/inventario/AnimalForm";
+import { DateInput } from '@/components/ui/DateInput';
 
 export default function ServicioForm({
   animal,
@@ -67,24 +68,9 @@ export default function ServicioForm({
     },
   });
 
-  // --- FUNCIÓN CLAVE: OBTENER USUARIO INCLUSO SIN INTERNET ---
-  const getSafeUserId = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.user?.id) return session.user.id;
-
-    // Si no hay sesión válida (caducó offline), verificamos nuestro Pase VIP local
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      const isOfflineAuthorized = localStorage.getItem("ganadera_offline_session") === "true";
-      if (isOfflineAuthorized) {
-        // Robamos el ID de usuario de la madre (vaca) a la que le asignamos el servicio
-        if (animal?.user_id) return animal.user_id;
-        
-        // Plan C: Buscamos cualquier animal 
-        const anyAnimal = await db.animals.toCollection().first();
-        return anyAnimal?.user_id || "offline-user";
-      }
-    }
-    return null; 
+  // --- LÓGICA LOCAL-FIRST (Zero Delay) ---
+  const getLocalUserId = () => {
+    return localStorage.getItem("ganadera_user_id");
   };
 
   const onSubmit = async (data) => {
@@ -92,7 +78,7 @@ export default function ServicioForm({
     setIsSaving(true);
 
     try {
-      const userId = await getSafeUserId();
+      const userId = getLocalUserId();
       
       if (!userId) {
         window.location.href = '/login';
@@ -173,8 +159,7 @@ export default function ServicioForm({
           Fecha de Servicio *
         </label>
         <div className={`bg-white rounded-xl p-4 flex items-center justify-between shadow-sm border border-gray-100 border-l-4 ${errors.fechaServicio ? 'border-l-red-400' : 'border-l-[#EAECE4]'}`}>
-          <input
-            type="date"
+          <DateInput
             className="font-bold text-gray-800 text-base outline-none w-full bg-transparent appearance-none"
             {...register("fechaServicio", { required: true })}
           />

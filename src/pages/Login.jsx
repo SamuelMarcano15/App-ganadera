@@ -18,28 +18,21 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [serverError, setServerError] = useState(null);
 
-  // --- SOLUCIÓN AL BLOQUEO OFFLINE Y TOKENS CADUCADOS ---
+  // --- FASE 1: EL PASAPORTE LOCAL (Cero Supabase, Cero navigator.onLine) ---
   useEffect(() => {
-    const verificarAcceso = async () => {
-      // 1. Primero intentamos con el oficial (Supabase)
-      const { data: { session } } = await supabase.auth.getSession();
+    const verificarAcceso = () => {
+      // 1. Leemos directamente el disco duro del teléfono
+      const userId = localStorage.getItem("ganadera_user_id");
 
-      if (session) {
-        // Sesión válida: renovamos el Pase VIP local y entramos
-        localStorage.setItem("ganadera_offline_session", "true");
+      // 2. Si el pasaporte existe, entra directo. No preguntamos a Supabase.
+      if (userId) {
         navigate("/inventario");
-      } else if (!navigator.onLine) {
-        // 2. EL TRUCO: Si NO hay internet y el token caducó, leemos el Pase VIP local
-        const paseVip = localStorage.getItem("ganadera_offline_session");
-        if (paseVip === "true") {
-          navigate("/inventario");
-        }
       }
     };
 
     verificarAcceso();
   }, [navigate]);
-  // ------------------------------------
+  // --------------------------------------------------------------------------
 
   const { register, handleSubmit, formState: { errors } } = useForm({
     resolver: zodResolver(loginSchema),
@@ -50,6 +43,7 @@ export default function LoginPage() {
     setIsLoading(true);
     setServerError(null);
     try {
+      // Esta es la ÚNICA vez que el usuario necesita internet para entrar
       const { data: authData, error } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
@@ -57,9 +51,14 @@ export default function LoginPage() {
 
       if (error) throw error;
 
-      if (authData.session) {
-        // Guardamos el Pase VIP local al iniciar sesión con éxito
-        localStorage.setItem("ganadera_offline_session", "true");
+      if (authData.session?.user?.id) {
+        // --- FASE 1: CREACIÓN DEL PASAPORTE ---
+        // Guardamos el ID real del usuario, no solo un "true/false"
+        localStorage.setItem("ganadera_user_id", authData.session.user.id);
+
+        // Limpiamos la bandera vieja de Next.js si es que quedó por ahí
+        localStorage.removeItem("ganadera_offline_session");
+
         navigate("/inventario");
       }
     } catch (error) {
