@@ -6,7 +6,7 @@ import { Camera, Save, X, ChevronUp, ChevronDown, Trash2, Plus, CheckCircle, Tri
 import { useLiveQuery } from 'dexie-react-hooks';
 
 import { db } from '@/lib/db';
-import { addToSyncQueue } from '@/lib/syncUtils';
+import { addToSyncQueue, runFullSync } from '@/lib/syncUtils';
 import { compressImage } from '@/lib/imageUtils';
 import GenealogySelector from './GenealogySelector';
 import CustomSelect from '@/components/ui/CustomSelect';
@@ -368,12 +368,14 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
           deleted_at: null
         };
 
+        const syncOps = [];
+
         if (isEditing) {
           await db.animals.put(animalData);
-          await addToSyncQueue('animals', 'UPDATE', animalData);
+          syncOps.push({ table_name: 'animals', operation: 'UPDATE', payload: animalData, created_at: now, status: 'PENDING' });
         } else {
           await db.animals.add(animalData);
-          await addToSyncQueue('animals', 'INSERT', animalData);
+          syncOps.push({ table_name: 'animals', operation: 'INSERT', payload: animalData, created_at: now, status: 'PENDING' });
         }
 
         if (data.birth_date) {
@@ -393,7 +395,7 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
             updated_at: now
           };
           await db.growth_events.put(birthEvent);
-          await addToSyncQueue('growth_events', eventIds.birth ? 'UPDATE' : 'INSERT', birthEvent);
+          syncOps.push({ table_name: 'growth_events', operation: eventIds.birth ? 'UPDATE' : 'INSERT', payload: birthEvent, created_at: now, status: 'PENDING' });
         }
 
         if (data.weaning_date) {
@@ -413,9 +415,17 @@ export default function AnimalForm({ initialValues, onSubmitSuccess, onCancel, o
             updated_at: now
           };
           await db.growth_events.put(weaningEvent);
-          await addToSyncQueue('growth_events', eventIds.weaning ? 'UPDATE' : 'INSERT', weaningEvent);
+          syncOps.push({ table_name: 'growth_events', operation: eventIds.weaning ? 'UPDATE' : 'INSERT', payload: weaningEvent, created_at: now, status: 'PENDING' });
         }
+
+        // Insertar a la cola en bloque dentro del contexto transaccional
+        await db.sync_queue.bulkAdd(syncOps);
       });
+
+      // Fuera de la transacción invocar el engine
+      if (navigator.onLine) {
+        setTimeout(runFullSync, 500);
+      }
 
       setToast({
         show: true,
