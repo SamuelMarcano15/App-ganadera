@@ -2,13 +2,13 @@ import { differenceInMonths, differenceInYears, formatDistanceToNowStrict } from
 import { es } from 'date-fns/locale';
 
 /**
- * Parsea una fecha string (YYYY-MM-DD) asegurando que se trate como mediodía local
- * para evitar que el desfase de zona horaria (Timezone Shift) cambie el día.
+ * Parsea una fecha string (YYYY-MM-DD) asegurando que se trate como el inicio del día local (00:00:00)
+ * para evitar el problema de "fecha futura" si el animal nació hoy por la mañana.
  */
 export function parseLocalDate(dateString) {
   if (!dateString) return null;
-  // Si ya viene con T, asumimos que es ISO completo, si no, le agregamos mediodía
-  const isoString = dateString.includes('T') ? dateString : `${dateString}T12:00:00`;
+  // Si ya viene con T, asumimos que es ISO completo, si no, le agregamos el inicio del día local
+  const isoString = dateString.includes('T') ? dateString : `${dateString}T00:00:00`;
   return new Date(isoString);
 }
 
@@ -35,15 +35,27 @@ export function formatShortDateLocal(dateString) {
 /**
  * Calcula la edad de un animal de forma legible.
  * @param {string | Date} birthDate - Fecha de nacimiento.
- * @returns {string} - Edad formateada (ej: "2 años 3 meses", "1 mes", "15 días").
+ * @returns {string} - Edad formateada (ej: "2 años 3 meses", "1 mes", "15 días", "Hoy").
  */
 export function calculateAge(birthDate) {
   if (!birthDate) return 'Desconocida';
 
   const birth = parseLocalDate(birthDate.toString());
   const now = new Date();
+  
+  // Normalizamos "now" al inicio del día para evitar falsos positivos de "fecha futura" en el mismo día
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
 
-  if (birth > now) return 'Fecha futura';
+  if (birth > todayStart) return 'Fecha futura';
+
+  // --- NUEVA VALIDACIÓN: Si nació exactamente el día de hoy ---
+  if (
+    birth.getFullYear() === now.getFullYear() &&
+    birth.getMonth() === now.getMonth() &&
+    birth.getDate() === now.getDate()
+  ) {
+    return 'Hoy';
+  }
 
   const years = differenceInYears(now, birth);
   const months = differenceInMonths(now, birth) % 12;
