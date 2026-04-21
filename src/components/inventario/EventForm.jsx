@@ -229,7 +229,14 @@ export default function EventForm({
             updated_at: now
           };
           await db.animals.update(animal.id, animalUpdate);
-          syncOps.push({ table_name: 'animals', operation: 'UPDATE', payload: { id: animal.id, ...animalUpdate }, created_at: now, status: 'PENDING' });
+          // PATCH parcial: marcamos _partial_update para que processSyncQueue use UPDATE en vez de upsert
+          syncOps.push({
+            table_name: 'animals',
+            operation: 'PATCH',
+            payload: { id: animal.id, ...animalUpdate },
+            created_at: now,
+            status: 'PENDING'
+          });
         }
 
         // Guardar operaciones de sincronización en bloque

@@ -34,11 +34,14 @@ export async function processSyncQueue() {
     try {
       const payloadToUpload = { ...item.payload };
 
-      // --- IMÁGENES ---
-      if (payloadToUpload.photo_blob && !payloadToUpload.photo_path) {
+      // --- SIEMPRE eliminar photo_blob antes de enviar a la nube ---
+      delete payloadToUpload.photo_blob;
+
+      // --- IMÁGENES: subir blob local si aún no tiene URL remota ---
+      if (item.payload.photo_blob && !payloadToUpload.photo_path) {
         try {
           const fileName = `offline-sync-${item.table_name}-${payloadToUpload.id}`;
-          const url = await uploadImageToSupabase(payloadToUpload.photo_blob, fileName);
+          const url = await uploadImageToSupabase(item.payload.photo_blob, fileName);
           payloadToUpload.photo_path = url;
           await db.table(item.table_name).update(payloadToUpload.id, { photo_path: url });
         } catch (imgErr) {
@@ -46,13 +49,16 @@ export async function processSyncQueue() {
         }
       }
 
-      delete payloadToUpload.photo_blob;
-
       // --- SUBIDA A BASE DE DATOS ---
       let error;
       if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
         const { error: upsertError } = await supabase.from(item.table_name).upsert(payloadToUpload);
         error = upsertError;
+      } else if (item.operation === 'PATCH') {
+        // UPDATE parcial: solo actualiza los campos del payload sin sobreescribir los demás
+        const { id, ...fields } = payloadToUpload;
+        const { error: patchError } = await supabase.from(item.table_name).update(fields).eq('id', id);
+        error = patchError;
       } else if (item.operation === 'DELETE') {
         const { error: deleteError } = await supabase.from(item.table_name).delete().eq('id', item.payload.id);
         error = deleteError;
