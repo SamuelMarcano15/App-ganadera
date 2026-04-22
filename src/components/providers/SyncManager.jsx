@@ -18,8 +18,10 @@ export default function SyncManager() {
   useEffect(() => {
     setPendingItemsCount(pendingCount);
     
+    // Solo programar sync si estamos online Y hay items pendientes
     if (typeof navigator !== 'undefined' && navigator.onLine && pendingCount > 0) {
-      triggerSync();
+      const debounce = setTimeout(() => triggerSync(), 2000);
+      return () => clearTimeout(debounce);
     }
   }, [pendingCount, setPendingItemsCount]);
 

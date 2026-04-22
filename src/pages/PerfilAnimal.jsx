@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, List, TrendingUp, ShieldPlus, Share2, Baby, Loader2 } from 'lucide-react';
 import { FaVenusMars } from 'react-icons/fa6';
@@ -15,6 +15,7 @@ import ReproductionTab from '@/components/ReproductionTab';
 // UI Components
 import BottomSheet from '@/components/ui/BottomSheet';
 import AnimalForm from '@/components/inventario/AnimalForm';
+import { AnimatePresence } from 'framer-motion';
 
 function ProfileContent() {
   const [searchParams] = useSearchParams();
@@ -24,6 +25,29 @@ function ProfileContent() {
   
   const [activeTab, setActiveTab] = useState(initialTab);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+  // --- SISTEMA DE MODAL RECURSIVO (idéntico a NuevoAnimal.jsx) ---
+  const [modalStack, setModalStack] = useState([]);
+
+  const handleOpenModal = useCallback((sex, onSelect) => {
+    setModalStack(prev => [...prev, { id: crypto.randomUUID(), sex, onSelect }]);
+  }, []);
+
+  const handleCloseModal = useCallback(() => {
+    setModalStack(prev => prev.slice(0, -1));
+  }, []);
+
+  const handleModalSuccess = useCallback((newAnimalId) => {
+    setModalStack(prev => {
+      if (prev.length === 0) return prev;
+      const currentModal = prev[prev.length - 1];
+      if (currentModal && typeof currentModal.onSelect === 'function') {
+        currentModal.onSelect(newAnimalId);
+      }
+      return prev.slice(0, -1);
+    });
+  }, []);
+  // ------------------------------------------------
 
   // Consulta reactiva a Dexie usando el ID de la URL
   const animal = useLiveQuery(() => {
@@ -142,8 +166,31 @@ function ProfileContent() {
           initialValues={animal}
           onCancel={() => setIsEditModalOpen(false)}
           onSubmitSuccess={() => setIsEditModalOpen(false)}
+          onOpenModal={handleOpenModal}
         />
       </BottomSheet>
+
+      {/* MODALES RECURSIVOS PARA CREAR PADRES */}
+      <AnimatePresence>
+        {modalStack.map((modal, index) => (
+          <BottomSheet
+            key={modal.id}
+            isOpen={true}
+            onClose={handleCloseModal}
+            title={`Registrar ${modal.sex === 'Macho' ? 'Padre' : 'Madre'}`}
+            description="Completa los datos mínimos para identificar al progenitor."
+            style={{ zIndex: 50 + index * 10 }}
+          >
+            <AnimalForm 
+              isModal
+              initialValues={{ sex: modal.sex }}
+              onCancel={handleCloseModal}
+              onSubmitSuccess={handleModalSuccess}
+              onOpenModal={handleOpenModal}
+            />
+          </BottomSheet>
+        ))}
+      </AnimatePresence>
     </main>
   );
 }
