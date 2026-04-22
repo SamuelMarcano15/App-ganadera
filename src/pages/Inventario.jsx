@@ -1,16 +1,18 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, SlidersHorizontal, Scale, Plus, X, Syringe, ClipboardPlus, CheckCircle2, XCircle, Check, AlertCircle } from 'lucide-react';
+import { Search, SlidersHorizontal, Scale, Plus, X, Syringe, ClipboardPlus, CheckCircle2, XCircle, Check, AlertCircle, RefreshCcw, CheckCircle } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
 import { calculateAge, formatWeight, parseLocalDate } from '@/lib/dateUtils';
 import SyncStatus from '@/components/ui/SyncStatus';
 import AnimalImage from '@/components/inventario/AnimalImage';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useForceResync } from '@/hooks/useForceResync';
 
 const actionOptions = [
   { label: 'Vacunación por Lotes', icon: Syringe, type: 'batch' },
   { label: 'Nuevo Registro', icon: ClipboardPlus, href: '/inventario/nuevo' },
+  { label: 'Respaldo Forzado', icon: RefreshCcw, type: 'resync' },
 ];
 
 const ITEMS_PER_PAGE = 50;
@@ -63,6 +65,9 @@ export default function InventarioPage() {
   const [isFabOpen, setIsFabOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Custom Hook para Respaldo Forzado
+  const { isResyncing, resyncSuccess, handleForceSync } = useForceResync();
 
   // --- ESTADO DE PAGINACIÓN ---
   const [currentPage, setCurrentPage] = useState(1);
@@ -526,21 +531,51 @@ export default function InventarioPage() {
                 className="flex flex-col items-end gap-3 mb-2"
               >
                 {actionOptions.map((option, index) => {
-                  const Icon = option.icon;
+                  let Icon = option.icon;
+                  let label = option.label;
+
+                  if (option.type === 'resync') {
+                    if (isResyncing) {
+                      label = 'ACTUALIZANDO...';
+                    } else if (resyncSuccess) {
+                      label = '¡ACTUALIZADO!';
+                      Icon = CheckCircle;
+                    }
+                  }
+
+                  const isResyncSuccess = option.type === 'resync' && resyncSuccess;
 
                   const content = (
                     <div
                       key={index}
-                      onClick={() => {
+                      onClick={async () => {
                         if (option.type === 'batch') {
                           setIsBatchMode(true);
                           setIsFabOpen(false);
+                        } else if (option.type === 'resync') {
+                          await handleForceSync(() => setIsFabOpen(false));
                         }
                       }}
-                      className="flex items-center gap-3 bg-white rounded-full py-3.5 px-6 shadow-2xl border-2 border-[#1B4820]/10 group hover:bg-[#1B4820] transition-all cursor-pointer"
+                      className={`flex items-center gap-3 bg-white rounded-full py-3.5 px-6 shadow-2xl border-2 group transition-all cursor-pointer ${
+                        isResyncSuccess 
+                          ? 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100' 
+                          : 'border-[#1B4820]/10 hover:bg-[#1B4820]'
+                      }`}
                     >
-                      <span className="text-sm font-black uppercase tracking-widest text-black group-hover:text-white transition-colors">{option.label}</span>
-                      <div className="bg-[#1B4820] p-2 rounded-full text-white group-hover:bg-white group-hover:text-[#1B4820] transition-colors"><Icon className="w-4 h-4" /></div>
+                      <span className={`text-sm font-black uppercase tracking-widest transition-colors ${
+                        isResyncSuccess 
+                          ? 'text-emerald-700' 
+                          : 'text-black group-hover:text-white'
+                      }`}>
+                        {label}
+                      </span>
+                      <div className={`p-2 rounded-full transition-colors ${
+                        isResyncSuccess 
+                          ? 'bg-emerald-500 text-white group-hover:bg-emerald-600' 
+                          : 'bg-[#1B4820] text-white group-hover:bg-white group-hover:text-[#1B4820]'
+                      }`}>
+                        <Icon className={`w-4 h-4 ${isResyncing && option.type === 'resync' ? 'animate-spin' : ''}`} />
+                      </div>
                     </div>
                   );
 

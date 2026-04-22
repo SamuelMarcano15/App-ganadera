@@ -243,3 +243,40 @@ export async function addToSyncQueue(table_name, operation, payload) {
     }, 1500);
   }
 }
+
+/**
+ * FUERZA UNA DESCARGA TOTAL (El Botón de Pánico / Resincronización)
+ * Ignora el historial local y descarga la base de datos completa de la nube.
+ */
+export async function forceFullResync() {
+  const store = useSyncStore.getState();
+  
+  if (!navigator.onLine) {
+    alert("Necesitas conexión a internet para realizar una sincronización completa.");
+    return false;
+  }
+
+  try {
+    store.setSyncStatus('SYNCING');
+    console.log('[Sync Engine] Iniciando Resincronización Forzada...');
+    
+    // 1. Retrocedemos el reloj al inicio de los tiempos
+    localStorage.setItem('lastSyncTimestamp', '1970-01-01T00:00:00Z');
+    
+    // 2. Ejecutamos el PULL puro (para traer todo)
+    await pullFromServer();
+    
+    store.setSyncStatus('UP_TO_DATE');
+    setTimeout(() => {
+      if (useSyncStore.getState().syncStatus === 'UP_TO_DATE') {
+        useSyncStore.getState().setSyncStatus('IDLE');
+      }
+    }, 3000);
+    
+    return true; // Éxito
+  } catch (error) {
+    console.error('[Sync Engine] Error en la resincronización forzada:', error);
+    store.setSyncStatus('ERROR');
+    return false; // Fallo
+  }
+}
