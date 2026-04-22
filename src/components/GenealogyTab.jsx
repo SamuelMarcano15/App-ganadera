@@ -49,10 +49,10 @@ export default function GenealogyTab({ animal }) {
         <AnimalImage photoPath={animal?.photo_path} photoBlob={animal?.photo_blob} className="w-full h-full object-cover" />
       </div>
       <div className="mt-1 text-center">
-        <p className={`text-[10px] font-black leading-none ${variant === "main" ? 'text-[#1B4820] text-sm' : 'text-neutral-800'}`}>
+        <p className={`text-[15px] font-black leading-none ${variant === "main" ? 'text-[#1B4820] text-base' : 'text-neutral-800'}`}>
           #{animal?.number || '---'}
         </p>
-        <p className="text-[7px] font-bold text-neutral-400 uppercase tracking-tighter">{label}</p>
+        <p className="text-[9px] font-bold text-neutral-400 uppercase tracking-tighter">{label}</p>
       </div>
     </div>
   );
