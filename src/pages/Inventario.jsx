@@ -1,16 +1,18 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, SlidersHorizontal, Scale, Plus, X, Syringe, ClipboardPlus, CheckCircle2, XCircle, Check, AlertCircle } from 'lucide-react';
+import { Search, SlidersHorizontal, Scale, Plus, X, Syringe, ClipboardPlus, CheckCircle2, XCircle, Check, AlertCircle, RefreshCcw, CheckCircle } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
 import { calculateAge, formatWeight, parseLocalDate } from '@/lib/dateUtils';
 import SyncStatus from '@/components/ui/SyncStatus';
 import AnimalImage from '@/components/inventario/AnimalImage';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useForceResync } from '@/hooks/useForceResync';
 
 const actionOptions = [
   { label: 'Vacunación por Lotes', icon: Syringe, type: 'batch' },
   { label: 'Nuevo Registro', icon: ClipboardPlus, href: '/inventario/nuevo' },
+  { label: 'Respaldo Forzado', icon: RefreshCcw, type: 'resync' },
 ];
 
 const ITEMS_PER_PAGE = 50;
@@ -63,6 +65,9 @@ export default function InventarioPage() {
   const [isFabOpen, setIsFabOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Custom Hook para Respaldo Forzado
+  const { isResyncing, resyncSuccess, handleForceSync } = useForceResync();
 
   // --- ESTADO DE PAGINACIÓN ---
   const [currentPage, setCurrentPage] = useState(1);
@@ -129,9 +134,9 @@ export default function InventarioPage() {
       if (a.birth_date) {
         const birth = parseLocalDate(a.birth_date);
         const months = (new Date() - birth) / (1000 * 60 * 60 * 24 * 30.44);
-        if (months < 12) category = 'Becerro';
-        else if (months < 24) category = 'Maute';
-        else if (months < 36) category = 'Novillo';
+        if (months < 9) category = 'Becerro';
+        else if (months < 19) category = 'Maute';
+        else if (months < 25) category = 'Novillo';
         else category = 'Adulto';
       }
       const matchesCategory = filters.category.length === 0 || filters.category.includes(category);
@@ -173,9 +178,9 @@ export default function InventarioPage() {
         if (a.birth_date) {
           const birth = parseLocalDate(a.birth_date);
           const months = (new Date() - birth) / (1000 * 60 * 60 * 24 * 30.44);
-          if (months < 12) cat = 'Becerro';
-          else if (months < 24) cat = 'Maute';
-          else if (months < 36) cat = 'Novillo';
+          if (months < 9) cat = 'Becerro';
+          else if (months < 19) cat = 'Maute';
+          else if (months < 25) cat = 'Novillo';
           else cat = 'Adulto';
         }
         return cat === value;
@@ -280,10 +285,10 @@ export default function InventarioPage() {
               <div>
                 <h4 className="text-sm font-black text-neutral-900 mb-2 uppercase tracking-wider">Categoría por Edad</h4>
                 <div className="space-y-0.5">
-                  <FilterCheckbox label="Becerros/as (0 a 11 meses)" count={getCount('category', 'Becerro')} checked={filters.category.includes('Becerro')} onChange={() => toggleFilter('category', 'Becerro')} />
-                  <FilterCheckbox label="Mautes/as (12 a 23 meses)" count={getCount('category', 'Maute')} checked={filters.category.includes('Maute')} onChange={() => toggleFilter('category', 'Maute')} />
-                  <FilterCheckbox label="Novillos/as (24 a 35 meses)" count={getCount('category', 'Novillo')} checked={filters.category.includes('Novillo')} onChange={() => toggleFilter('category', 'Novillo')} />
-                  <FilterCheckbox label="Adultos Toro/Vaca (+36 meses)" count={getCount('category', 'Adulto')} checked={filters.category.includes('Adulto')} onChange={() => toggleFilter('category', 'Adulto')} />
+                  <FilterCheckbox label="Becerros/as (0 a 8 meses)" count={getCount('category', 'Becerro')} checked={filters.category.includes('Becerro')} onChange={() => toggleFilter('category', 'Becerro')} />
+                  <FilterCheckbox label="Mautes/as (9 a 18 meses)" count={getCount('category', 'Maute')} checked={filters.category.includes('Maute')} onChange={() => toggleFilter('category', 'Maute')} />
+                  <FilterCheckbox label="Novillos/as (19 a 24 meses)" count={getCount('category', 'Novillo')} checked={filters.category.includes('Novillo')} onChange={() => toggleFilter('category', 'Novillo')} />
+                  <FilterCheckbox label="Adultos Toro/Vaca (+24 meses)" count={getCount('category', 'Adulto')} checked={filters.category.includes('Adulto')} onChange={() => toggleFilter('category', 'Adulto')} />
                   <FilterCheckbox label="Edad Desconocida" count={getCount('category', 'Desconocida')} checked={filters.category.includes('Desconocida')} onChange={() => toggleFilter('category', 'Desconocida')} />
                 </div>
               </div>
@@ -305,7 +310,7 @@ export default function InventarioPage() {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex md:flex-1 items-center justify-between md:justify-start w-full">
             <span className="text-lg md:text-3xl font-black text-[#1B4820] md:text-white tracking-tight whitespace-nowrap">
-              Inventario Ganadero
+             Finca Los Muchachos
             </span>
             <div className="md:hidden">
               <SyncStatus />
@@ -395,7 +400,17 @@ export default function InventarioPage() {
                         <div className={`inline-block px-2.5 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest text-white mb-2 ${animal.sex === 'Hembra' ? 'bg-pink-600' : 'bg-blue-700'}`}>
                           {animal.sex}
                         </div>
-                        <h2 className="text-lg sm:text-xl md:text-2xl font-black text-black leading-tight mb-1">#{animal.number}</h2>
+                        <h2 
+  className="text-lg sm:text-xl md:text-2xl font-black text-black leading-tight mb-1" 
+  title={`#${animal.number}`}
+>
+  <span className="md:hidden">
+    #{animal.number.length > 10 ? animal.number.substring(0, 10) + '...' : animal.number}
+  </span>
+  <span className="hidden md:inline">
+    #{animal.number.length > 12 ? animal.number.substring(0, 12) + '...' : animal.number}
+  </span>
+</h2>
                         <p className="text-xs text-neutral-700 font-bold uppercase tracking-wider">{calculateAge(animal.birth_date)}</p>
                       </div>
 
@@ -516,21 +531,51 @@ export default function InventarioPage() {
                 className="flex flex-col items-end gap-3 mb-2"
               >
                 {actionOptions.map((option, index) => {
-                  const Icon = option.icon;
+                  let Icon = option.icon;
+                  let label = option.label;
+
+                  if (option.type === 'resync') {
+                    if (isResyncing) {
+                      label = 'ACTUALIZANDO...';
+                    } else if (resyncSuccess) {
+                      label = '¡ACTUALIZADO!';
+                      Icon = CheckCircle;
+                    }
+                  }
+
+                  const isResyncSuccess = option.type === 'resync' && resyncSuccess;
 
                   const content = (
                     <div
                       key={index}
-                      onClick={() => {
+                      onClick={async () => {
                         if (option.type === 'batch') {
                           setIsBatchMode(true);
                           setIsFabOpen(false);
+                        } else if (option.type === 'resync') {
+                          await handleForceSync(() => setIsFabOpen(false));
                         }
                       }}
-                      className="flex items-center gap-3 bg-white rounded-full py-3.5 px-6 shadow-2xl border-2 border-[#1B4820]/10 group hover:bg-[#1B4820] transition-all cursor-pointer"
+                      className={`flex items-center gap-3 bg-white rounded-full py-3.5 px-6 shadow-2xl border-2 group transition-all cursor-pointer ${
+                        isResyncSuccess 
+                          ? 'border-emerald-200 bg-emerald-50 hover:bg-emerald-100' 
+                          : 'border-[#1B4820]/10 hover:bg-[#1B4820]'
+                      }`}
                     >
-                      <span className="text-sm font-black uppercase tracking-widest text-black group-hover:text-white transition-colors">{option.label}</span>
-                      <div className="bg-[#1B4820] p-2 rounded-full text-white group-hover:bg-white group-hover:text-[#1B4820] transition-colors"><Icon className="w-4 h-4" /></div>
+                      <span className={`text-sm font-black uppercase tracking-widest transition-colors ${
+                        isResyncSuccess 
+                          ? 'text-emerald-700' 
+                          : 'text-black group-hover:text-white'
+                      }`}>
+                        {label}
+                      </span>
+                      <div className={`p-2 rounded-full transition-colors ${
+                        isResyncSuccess 
+                          ? 'bg-emerald-500 text-white group-hover:bg-emerald-600' 
+                          : 'bg-[#1B4820] text-white group-hover:bg-white group-hover:text-[#1B4820]'
+                      }`}>
+                        <Icon className={`w-4 h-4 ${isResyncing && option.type === 'resync' ? 'animate-spin' : ''}`} />
+                      </div>
                     </div>
                   );
 

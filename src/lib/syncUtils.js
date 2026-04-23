@@ -41,7 +41,10 @@ export async function processSyncQueue() {
       if (item.payload.photo_blob && !payloadToUpload.photo_path) {
         try {
           const fileName = `offline-sync-${item.table_name}-${payloadToUpload.id}`;
-          const url = await uploadImageToSupabase(item.payload.photo_blob, fileName);
+          const url = await withTimeout(
+            uploadImageToSupabase(item.payload.photo_blob, fileName),
+            30000 // 30s de gracia para redes 3G lentas
+          );
           payloadToUpload.photo_path = url;
           await db.table(item.table_name).update(payloadToUpload.id, { photo_path: url });
         } catch (imgErr) {
@@ -52,15 +55,24 @@ export async function processSyncQueue() {
       // --- SUBIDA A BASE DE DATOS ---
       let error;
       if (item.operation === 'INSERT' || item.operation === 'UPDATE') {
-        const { error: upsertError } = await supabase.from(item.table_name).upsert(payloadToUpload);
+        const { error: upsertError } = await withTimeout(
+          supabase.from(item.table_name).upsert(payloadToUpload),
+          15000 // 15s de gracia
+        );
         error = upsertError;
       } else if (item.operation === 'PATCH') {
         // UPDATE parcial: solo actualiza los campos del payload sin sobreescribir los demás
         const { id, ...fields } = payloadToUpload;
-        const { error: patchError } = await supabase.from(item.table_name).update(fields).eq('id', id);
+        const { error: patchError } = await withTimeout(
+          supabase.from(item.table_name).update(fields).eq('id', id),
+          15000 // 15s de gracia
+        );
         error = patchError;
       } else if (item.operation === 'DELETE') {
-        const { error: deleteError } = await supabase.from(item.table_name).delete().eq('id', item.payload.id);
+        const { error: deleteError } = await withTimeout(
+          supabase.from(item.table_name).delete().eq('id', item.payload.id),
+          15000 // 15s de gracia
+        );
         error = deleteError;
       }
 
@@ -84,8 +96,8 @@ export async function processSyncQueue() {
 
       // Si el error es de sesión caducada (JWT), permisos (401), o falta de red real (fetch)
       // ABORTAMOS el bucle silenciosamente. No tiene sentido intentar subir los demás.
-      if (errMsg.includes('jwt') || errMsg.includes('auth') || errMsg.includes('fetch') || err.code === 'PGRST301' || err.status === 401) {
-        console.warn('[Sync Engine] Sesión caducada o red inaccesible. Sincronización pausada silenciosamente.');
+      if (errMsg.includes('timeout') || errMsg.includes('jwt') || errMsg.includes('auth') || errMsg.includes('fetch') || err.code === 'PGRST301' || err.status === 401) {
+        console.warn('[Sync Engine] Timeout, sesión caducada o red inaccesible. Sincronización pausada silenciosamente.');
         break; // Rompe el ciclo for. El resto de items se quedan PENDING.
       }
 
@@ -135,19 +147,26 @@ export async function pullFromServer() {
     }
 
     if (serverData && serverData.length > 0) {
-      for (const record of serverData) {
-        if ((table === 'animals' || table === 'growth_events') && record.photo_path) {
-          try {
-            const response = await fetch(record.photo_path);
-            if (response.ok) {
-              record.photo_blob = await response.blob();
+      // 1. Descarga de imágenes en paralelo sin bloquear
+      if (table === 'animals' || table === 'growth_events') {
+        await Promise.allSettled(
+          serverData.map(async (record) => {
+            if (record.photo_path) {
+              try {
+                const response = await withTimeout(fetch(record.photo_path), 10000);
+                if (response.ok) {
+                  record.photo_blob = await response.blob();
+                }
+              } catch (imgErr) {
+                // Ignorar silenciosamente, la imagen se intentará cargar por URL luego
+              }
             }
-          } catch (imgErr) {
-            // Ignorar silenciosamente, la imagen se intentará cargar por URL luego
-          }
-        }
-        await db.table(table).put(record);
+          })
+        );
       }
+
+      // 2. Guardado en Dexie: 1 sola transacción en bloque
+      await db.table(table).bulkPut(serverData);
     }
   }
   localStorage.setItem('lastSyncTimestamp', currentSyncTime);
@@ -221,6 +240,43 @@ export async function addToSyncQueue(table_name, operation, payload) {
   if (navigator.onLine) {
     setTimeout(() => {
       runFullSync();
-    }, 500);
+    }, 1500);
+  }
+}
+
+/**
+ * FUERZA UNA DESCARGA TOTAL (El Botón de Pánico / Resincronización)
+ * Ignora el historial local y descarga la base de datos completa de la nube.
+ */
+export async function forceFullResync() {
+  const store = useSyncStore.getState();
+  
+  if (!navigator.onLine) {
+    alert("Necesitas conexión a internet para realizar una sincronización completa.");
+    return false;
+  }
+
+  try {
+    store.setSyncStatus('SYNCING');
+    console.log('[Sync Engine] Iniciando Resincronización Forzada...');
+    
+    // 1. Retrocedemos el reloj al inicio de los tiempos
+    localStorage.setItem('lastSyncTimestamp', '1970-01-01T00:00:00Z');
+    
+    // 2. Ejecutamos el PULL puro (para traer todo)
+    await pullFromServer();
+    
+    store.setSyncStatus('UP_TO_DATE');
+    setTimeout(() => {
+      if (useSyncStore.getState().syncStatus === 'UP_TO_DATE') {
+        useSyncStore.getState().setSyncStatus('IDLE');
+      }
+    }, 3000);
+    
+    return true; // Éxito
+  } catch (error) {
+    console.error('[Sync Engine] Error en la resincronización forzada:', error);
+    store.setSyncStatus('ERROR');
+    return false; // Fallo
   }
 }
