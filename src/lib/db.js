@@ -157,3 +157,21 @@ export class GanaderaDB extends Dexie {
 
 // Exportamos una única instancia para usarla en toda la app
 export const db = new GanaderaDB();
+
+/**
+ * Borra todos los datos almacenados localmente en IndexedDB y el localStorage.
+ * Esto evita la contaminación de datos entre perfiles de usuario diferentes.
+ */
+export async function clearLocalData() {
+  await Promise.all([
+    db.animals.clear(),
+    db.services.clear(),
+    db.pregnancy_checks.clear(),
+    db.health_records.clear(),
+    db.growth_events.clear(),
+    db.sync_queue.clear()
+  ]);
+  localStorage.removeItem("lastSyncTimestamp");
+  localStorage.removeItem("ganadera_user_id");
+  localStorage.removeItem("viewed8Months");
+}

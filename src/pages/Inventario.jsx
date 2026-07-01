@@ -1,18 +1,24 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, SlidersHorizontal, Scale, Plus, X, Syringe, ClipboardPlus, CheckCircle2, XCircle, Check, AlertCircle, RefreshCcw, CheckCircle } from 'lucide-react';
+import { Search, SlidersHorizontal, Scale, Plus, X, Syringe, ClipboardPlus, CheckCircle2, XCircle, Check, AlertCircle, RefreshCcw, CheckCircle, LogOut } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/lib/db';
+import { db, clearLocalData } from '@/lib/db';
 import { calculateAge, formatWeight, parseLocalDate } from '@/lib/dateUtils';
 import SyncStatus from '@/components/ui/SyncStatus';
 import AnimalImage from '@/components/inventario/AnimalImage';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useForceResync } from '@/hooks/useForceResync';
+import { supabase } from '@/lib/supabaseClient';
+import { runFullSync } from '@/lib/syncUtils';
 
 const actionOptions = [
+  { label: 'Cerrar Sesión', icon: LogOut, type: 'logout' },
+  { label: 'Respaldo Forzado', icon: RefreshCcw, type: 'resync' },
+  
   { label: 'Vacunación por Lotes', icon: Syringe, type: 'batch' },
   { label: 'Nuevo Registro', icon: ClipboardPlus, href: '/inventario/nuevo' },
-  { label: 'Respaldo Forzado', icon: RefreshCcw, type: 'resync' },
+  
 ];
 
 const ITEMS_PER_PAGE = 50;
@@ -81,6 +87,24 @@ export default function InventarioPage() {
     try { return JSON.parse(localStorage.getItem('viewed8Months') || '[]'); }
     catch { return []; }
   });
+
+  // --- ESTADOS PARA CIERRE DE SESIÓN ---
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
+  const [pendingLogoutCount, setPendingLogoutCount] = useState(0);
+
+  const executeLogout = async () => {
+    try {
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {
+        console.warn('No se pudo cerrar sesión en el servidor (posiblemente offline):', e);
+      }
+      await clearLocalData();
+      navigate("/login");
+    } catch (err) {
+      console.error('Error al ejecutar el cierre de sesión:', err);
+    }
+  };
 
   const [filters, setFilters] = useState({
     sex: [],
@@ -554,6 +578,29 @@ export default function InventarioPage() {
                           setIsFabOpen(false);
                         } else if (option.type === 'resync') {
                           await handleForceSync(() => setIsFabOpen(false));
+                        } else if (option.type === 'logout') {
+                          setIsFabOpen(false);
+                          try {
+                            let pendingCount = await db.sync_queue.count();
+
+                            // 1. Si hay internet y hay cambios pendientes, intentar sincronizar automáticamente
+                            if (pendingCount > 0 && navigator.onLine) {
+                              console.log('Sincronizando cambios antes del cierre de sesión...');
+                              await runFullSync();
+                              // Volvemos a contar por si se subió todo con éxito
+                              pendingCount = await db.sync_queue.count();
+                            }
+
+                            // 2. Si todavía quedan cambios pendientes (offline o error de red)
+                            if (pendingCount > 0) {
+                              setPendingLogoutCount(pendingCount);
+                              setIsLogoutConfirmOpen(true);
+                            } else {
+                              await executeLogout();
+                            }
+                          } catch (err) {
+                            console.error('Error general durante el cierre de sesión:', err);
+                          }
                         }
                       }}
                       className={`flex items-center gap-3 bg-white rounded-full py-3.5 px-6 shadow-2xl border-2 group transition-all cursor-pointer ${
@@ -597,6 +644,20 @@ export default function InventarioPage() {
           </button>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={isLogoutConfirmOpen}
+        title="Cambios sin sincronizar"
+        description={`No se han podido subir todos los datos a la nube (tienes ${pendingLogoutCount} cambio(s) pendiente(s)).`}
+        confirmText="Cerrar sesión"
+        cancelText="Volver"
+        onConfirm={async () => {
+          setIsLogoutConfirmOpen(false);
+          await executeLogout();
+        }}
+        onCancel={() => setIsLogoutConfirmOpen(false)}
+        isDanger={true}
+      />
     </main>
   );
 }
